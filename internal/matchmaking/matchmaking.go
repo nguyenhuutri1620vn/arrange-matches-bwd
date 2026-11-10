@@ -454,39 +454,45 @@ func (la *lookahead) bestCounts(w []slot, firstOnly bool) [][4]int {
 // reported through Lineup.Balanced, not enforced, so the host can override
 // it. It returns domain.ErrInvalidGenderLineup when no split is allowed.
 func Arrange(four [4]Candidate, rules domain.MatchRules) (Lineup, error) {
-	if !genderCompositionValid(four, rules) {
-		return Lineup{}, domain.ErrInvalidGenderLineup
-	}
 	splits := [3][4]int{{0, 1, 2, 3}, {0, 2, 1, 3}, {0, 3, 1, 2}}
 	var (
 		best  Lineup
 		found bool
 	)
 	for _, s := range splits {
-		a1, a2, b1, b2 := &four[s[0]], &four[s[1]], &four[s[2]], &four[s[3]]
-		if !splitGenderValid(a1, a2, b1, b2) {
+		lineup, err := Evaluate([2]Candidate{four[s[0]], four[s[1]]}, [2]Candidate{four[s[2]], four[s[3]]}, rules)
+		if err != nil {
 			continue
 		}
-		diff := a1.Level.Score() + a2.Level.Score() - b1.Level.Score() - b2.Level.Score()
-		if diff < 0 {
-			diff = -diff
-		}
-		repeats := countRepeats(a1, a2, b1, b2)
-		if !found || diff < best.Diff || (diff == best.Diff && repeats < best.Repeats) {
-			best = Lineup{
-				TeamA:    [2]int64{a1.ID, a2.ID},
-				TeamB:    [2]int64{b1.ID, b2.ID},
-				Diff:     diff,
-				Balanced: diff <= rules.BalanceThreshold,
-				Repeats:  repeats,
-			}
-			found = true
+		if !found || lineup.Diff < best.Diff || (lineup.Diff == best.Diff && lineup.Repeats < best.Repeats) {
+			best, found = lineup, true
 		}
 	}
 	if !found {
 		return Lineup{}, domain.ErrInvalidGenderLineup
 	}
 	return best, nil
+}
+
+// Evaluate checks two given teams against the gender rules and measures
+// their balance. It returns domain.ErrInvalidGenderLineup when the gender
+// rules forbid the lineup; an unbalanced lineup is reported, not rejected.
+func Evaluate(teamA, teamB [2]Candidate, rules domain.MatchRules) (Lineup, error) {
+	a1, a2, b1, b2 := &teamA[0], &teamA[1], &teamB[0], &teamB[1]
+	if !genderCompositionValid([4]Candidate{*a1, *a2, *b1, *b2}, rules) || !splitGenderValid(a1, a2, b1, b2) {
+		return Lineup{}, domain.ErrInvalidGenderLineup
+	}
+	diff := a1.Level.Score() + a2.Level.Score() - b1.Level.Score() - b2.Level.Score()
+	if diff < 0 {
+		diff = -diff
+	}
+	return Lineup{
+		TeamA:    [2]int64{a1.ID, a2.ID},
+		TeamB:    [2]int64{b1.ID, b2.ID},
+		Diff:     diff,
+		Balanced: diff <= rules.BalanceThreshold,
+		Repeats:  countRepeats(a1, a2, b1, b2),
+	}, nil
 }
 
 // genderCompositionValid applies the 3-1 rule: the three of one gender must
