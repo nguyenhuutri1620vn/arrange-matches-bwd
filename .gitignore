@@ -1,0 +1,10 @@
+.DS_Store
+.env
+*.db
+*.db-shm
+*.db-wal
+/bin/
+/server
+web/node_modules/
+web/dist/*
+!web/dist/.gitkeep
