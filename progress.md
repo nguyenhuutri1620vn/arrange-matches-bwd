@@ -1,78 +1,47 @@
 # Progress: Quản lý sân cầu lông & ghép trận
 
-Ghi lại các bước đã làm trước khi bắt đầu viết code. Cập nhật file này sau mỗi mốc lớn.
+Cập nhật file này sau mỗi mốc lớn.
 
-Cập nhật lần cuối: 2026-11-10 · Nhánh: `develop`
+Cập nhật lần cuối: 2026-11-11 · Nhánh: `develop`
 
 ---
 
 ## Trạng thái tổng quan
 
-- Giai đoạn: **Chuẩn bị (chưa có code ứng dụng)**
-- Đã có: tài liệu yêu cầu, hướng dẫn cho Claude, repo git.
-- Chưa có: `go.mod`, mã Go, migration, frontend, `simulation/`, `.gitignore`.
+- Giai đoạn: **Bản dựng đầu tiên đã xong** (đủ 5 bước trong `CLAUDE.md` mục 8).
+- Chưa làm: deploy, mô phỏng lại với danh sách người chơi thật, xác nhận các giả định tạm ở mục 11 của `docs/raw_requirement.md`.
 
 ---
 
 ## Lịch sử các bước đã làm
 
-| # | Ngày | Bước | Commit | Ghi chú |
-|---|---|---|---|---|
-| 1 | 2026-11-10 | Khởi tạo repo git | `c235deb` Initial commit | Repo trống. |
-| 2 | 2026-11-10 | Viết `CLAUDE.md` (hướng dẫn cho Claude: stack, cấu trúc thư mục, quy tắc nghiệp vụ, quy ước code, kiểm thử) | `8215b6c` Add project guide and MVP requirements | Nguồn chuẩn cho mọi quy tắc kỹ thuật. |
-| 3 | 2026-11-10 | Viết `docs/raw_requirement.md` v0.2 (bối cảnh, phạm vi MVP, yêu cầu chức năng, quy tắc ghép trận, data model, tiêu chí chấp nhận) | `8215b6c` | Đã chốt phần lớn câu hỏi với host. Mục 12 có dữ liệu khởi tạo. |
-| 4 | 2026-11-10 | Tạo file `progress.md` này | — | Chưa commit. |
-
----
-
-## Quyết định đã chốt (tóm tắt)
-
-Chi tiết đầy đủ nằm trong `docs/raw_requirement.md` mục 10.
-
-- MVP chỉ có **một host**, đăng nhập bằng tài khoản admin lấy từ `ADMIN_USERNAME`, `ADMIN_PASSWORD`.
-- Trạng thái: người chơi `WAITING` / `PLAYING` / `RESTING` (không có `LEFT`); sân `EMPTY` / `IN_USE`; trận `DRAFT` / `ONGOING` / `FINISHED` (không có huỷ trận).
-- App chỉ **đề xuất** trận (`DRAFT`), host duyệt. Mỗi sân tối đa một `DRAFT`.
-- Đổi người trong `DRAFT`: lệch giới tính chặn cứng, lệch level chỉ cảnh báo.
-- Ghép trận: ưu tiên `matches_played + priority_offset`, rồi `consecutive_rest`, rồi `queued_at`. Mục tiêu chênh lệch số trận ≤ 1.
-- Giới tính 3-1 / 1-3: ngưỡng trung bình ≥ 2, so sánh bằng số nguyên.
-- Tiền: `int64` VND. Người cố định không trả phí buổi; phí tháng host tự nhập.
-- Báo cáo drill-down: tổng → tháng → buổi → người chơi, thu cố định và vãng lai tách riêng.
-- Thời gian lưu UTC, hiển thị và tính báo cáo tháng theo `Asia/Ho_Chi_Minh`.
-- Polling 3 giây. Không offline. Không đồng hồ đếm giờ trận.
-- Chỉ một buổi `OPEN` tại một thời điểm.
-
----
-
-## Việc còn lại trước khi bắt đầu code
-
-Theo thứ tự dựng trong `CLAUDE.md` mục 8:
-
-- [ ] Thêm `.gitignore` (`.DS_Store`, `web/node_modules`, binary, file DB, `.env`).
-- [ ] Thêm `.env.example` với `ADMIN_USERNAME`, `ADMIN_PASSWORD` (không có giá trị thật).
-- [ ] Khởi tạo `go.mod` (Go 1.22+).
-- [ ] Đặt file `simulation/players.csv` (host cung cấp danh sách thật, hoặc tạm dùng dữ liệu giả lập).
-- [ ] Trả lời các câu hỏi mở (hiện mục 11 của tài liệu ghi "Chưa có").
-
-### Thứ tự dựng
-
-1. `domain` + `matchmaking` + mô phỏng đạt tiêu chí (chênh lệch số trận ≤ 1).
-2. `storage` + `session`.
-3. `httpapi` (kèm đăng nhập).
-4. Giao diện web (React + Vite, PWA).
-5. `finance` và báo cáo.
-
-Trước bước 1 phải tóm tắt kế hoạch và chờ host xác nhận (`CLAUDE.md` mục 8).
+| # | Ngày | Bước | Ghi chú |
+|---|---|---|---|
+| 1 | 2026-11-10 | Khởi tạo repo, `CLAUDE.md`, `docs/raw_requirement.md` v0.2 | Nguồn chuẩn cho quy tắc nghiệp vụ. |
+| 2 | 2026-11-10 | `internal/domain` + `internal/matchmaking` + `simulation/` | Thuật toán chọn người theo số trận ưu tiên, có nhìn trước để không bỏ kẹt người ít trận. |
+| 3 | 2026-11-10 | `migrations/` + `internal/storage` + `internal/session` | SQLite (`modernc.org/sqlite`), mọi thay đổi trạng thái trong một transaction, seed mục 12. |
+| 4 | 2026-11-10 | `internal/finance` | Thu chi, phí tháng, báo cáo drill-down. |
+| 5 | 2026-11-10 | `internal/httpapi` + `cmd/server` | Đăng nhập admin từ biến môi trường, cookie ký, giới hạn đăng nhập sai. |
+| 6 | 2026-11-10 | `web/` (React + Vite, PWA) | 5 tab: Buổi chơi, Người chơi, Thu chi, Báo cáo, Cài đặt. |
+| 7 | 2026-11-11 | Kiểm tra giao diện ở 375px, Dockerfile, cập nhật tài liệu | Ghi giả định tạm vào mục 11 của tài liệu yêu cầu. |
 
 ---
 
 ## Mốc kiểm tra
 
-- [ ] `go test ./...` chạy được (sau khi có `go.mod`).
-- [ ] Mô phỏng `go run ./simulation -courts 2 -players 16 -runs 1000` đạt chênh lệch số trận ≤ 1.
-- [ ] Mỗi bước dựng có commit riêng trên `develop`.
+- [x] `go test ./...` đạt (domain, matchmaking, session, finance, httpapi).
+- [x] Mô phỏng `go run ./simulation -matrix -runs 1000` đạt: 1, 2, 3 sân, 7 đến 8 người mỗi sân, không có buổi nào lệch quá 1 trận mà lẽ ra xếp công bằng được. Dùng danh sách giả lập `simulation/players.csv`.
+- [x] `govulncheck ./...` và `npm audit`: không có lỗ hổng.
+- [x] Đã chạy thử trên trình duyệt ở 375px: đăng nhập, mở buổi, check-in, đề xuất, đổi người, xác nhận, thu phí, kết thúc buổi, báo cáo tháng 11/2026 (3 người cố định, 2 buổi cũ), thu chi.
+- [ ] Host mô phỏng lại với danh sách người chơi thật.
+- [ ] Host xác nhận các giả định tạm (mục 11 tài liệu yêu cầu).
+- [ ] Deploy.
 
 ---
 
-## Nhật ký thay đổi
+## Điều cần biết khi làm tiếp
 
-- 2026-11-10: Tạo `progress.md`, ghi lại các bước khởi tạo repo, `CLAUDE.md`, `docs/raw_requirement.md`.
+- Go server nhúng `web/dist` lúc biên dịch: sửa giao diện xong phải `npm run build` rồi chạy lại server.
+- `go.mod` yêu cầu Go 1.26 (do driver SQLite); Go cũ hơn sẽ tự tải toolchain.
+- `.env` (không commit) chứa `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `SESSION_SECRET`. Thiếu `SESSION_SECRET` thì mỗi lần khởi động lại server phải đăng nhập lại.
+- Sau lần dựng ban đầu: sửa thuật toán ghép trận hoặc schema phải tóm tắt kế hoạch và chờ host xác nhận (`CLAUDE.md` mục 8), và mô phỏng phải đạt lại.

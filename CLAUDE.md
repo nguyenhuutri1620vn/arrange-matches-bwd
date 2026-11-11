@@ -14,7 +14,7 @@ Ngôn ngữ giao diện và thông báo: tiếng Việt. Tên biến, hàm, comm
 
 ## 2. Tech stack
 
-- **Backend:** Go 1.22+, `net/http` (hoặc `chi`), không dùng framework nặng.
+- **Backend:** Go 1.26+ (driver SQLite yêu cầu), `net/http` (hoặc `chi`), không dùng framework nặng.
 - **Database:** SQLite, thông qua `database/sql` và driver `modernc.org/sqlite` (không cần CGO).
 - **Migration:** file SQL trong `migrations/`, đánh số tăng dần.
 - **Frontend:** React + Vite, TypeScript, PWA mobile-first. Không dùng UI framework nặng, ưu tiên CSS đơn giản.
@@ -156,14 +156,24 @@ Thư mục `simulation/` chứa một chương trình mô phỏng buổi chơi:
 
 Tiêu chí đạt: chênh lệch số trận giữa người nhiều nhất và ít nhất không quá 1. Nếu không đạt, không được merge thay đổi thuật toán.
 
-Chạy bằng: `go run ./simulation -courts 2 -players 16 -runs 1000` (cập nhật khi có script thật).
+Chạy bằng:
+
+```
+go run ./simulation -courts 2 -players 16 -runs 1000   # một cấu hình
+go run ./simulation -matrix -runs 1000                 # 1-3 sân, 7 đến 8 người mỗi sân
+```
+
+Thêm `-v` để in từng buổi không đạt, `-file` để dùng danh sách người chơi khác. Buổi mà quy tắc giới tính/cân bằng khiến không thể công bằng (ví dụ có người không xếp được vào đội hình hợp lệ nào) được đếm riêng, không tính là lỗi.
 
 ### 7.3 Lệnh thường dùng
 
 ```
 go test ./...
-go run ./cmd/server
-cd web && npm run dev
+cp .env.example .env          # rồi điền ADMIN_USERNAME, ADMIN_PASSWORD
+cd web && npm install && npm run build   # Go server nhúng web/dist lúc biên dịch
+go run ./cmd/server           # http://localhost:8080
+cd web && npm run dev         # giao diện dev, proxy /api sang :8080
+docker build -t bwd . && docker run -p 8080:8080 -v bwd-data:/data -e ADMIN_USERNAME=... -e ADMIN_PASSWORD=... bwd
 ```
 
 Cập nhật các lệnh này khi repo thay đổi.

@@ -1,6 +1,6 @@
 # Raw Requirement: Quản lý sân cầu lông & ghép trận
 
-Phiên bản: 0.2 (MVP, đã chốt phần lớn câu hỏi với host ngày 2026-11-10)
+Phiên bản: 0.3 (MVP, đã chốt phần lớn câu hỏi với host ngày 2026-11-10; bổ sung giả định tạm ở mục 11 ngày 2026-11-11)
 Ngôn ngữ tài liệu: tiếng Việt
 
 ---
@@ -275,7 +275,17 @@ Mô phỏng: Fable viết chương trình mô phỏng với danh sách người 
 
 ## 11. Câu hỏi còn mở
 
-Chưa có. Câu hỏi mới phát sinh ghi vào đây kèm giả định tạm.
+Các điểm dưới đây phát sinh khi dựng bản đầu tiên (2026-11-11). Mỗi điểm đang chạy theo **giả định tạm**; host xác nhận hoặc đổi.
+
+1. **Thứ tự xếp hạng đề xuất.** Giả định tạm: (1) số trận ưu tiên, giữ tối đa người ở mức `min`; (2) nhìn trước: lựa chọn không được để những người ít trận còn lại rơi vào nhóm mà quy tắc giới tính/cân bằng không xếp được với nhau; (3) ưu tiên người khó xếp (ít đội hình hợp lệ) khi đang có đội hình cho họ; (4) `consecutive_rest`; (5) chênh lệch level nhỏ nhất; (6) ít trùng lặp; (7) `queued_at`. Bước (2) và (3) không có trong mục 6.4 nhưng cần để mô phỏng đạt chênh lệch ≤ 1. Tối đa 16 người đầu hàng chờ (theo thứ tự ưu tiên) được xét cho một đề xuất.
+2. **Nhóm 4 người lặp lại.** Với 8 người 1 sân và mọi người cùng level/giới tính, ưu tiên `consecutive_rest` khiến hai nhóm 4 người luân phiên cố định (chỉ đổi cách chia cặp). Giả định tạm: giữ đúng thứ tự ưu tiên của mục 6.4. Nếu host muốn trộn người nhiều hơn thì cần hạ ưu tiên của `consecutive_rest` xuống dưới "tránh trùng lặp".
+3. **Khi nào app tự đề xuất.** Giả định tạm: tự đề xuất cho sân vừa kết thúc trận; các trường hợp khác host bấm "Đề xuất trận" trên sân trống. Lý do: nếu tự đề xuất mọi lúc thì đề xuất vừa bị bỏ sẽ hiện lại ngay.
+4. **Đổi người trong đề xuất.** Giả định tạm: sau khi đổi, app chia lại hai đội cho 4 người mới (hợp lệ giới tính, lệch level nhỏ nhất) thay vì giữ nguyên vị trí người bị thay.
+5. **Cho người đang được giữ chỗ đi nghỉ.** Giả định tạm: đề xuất chứa người đó bị xóa.
+6. **Người không thể xếp.** Ví dụ một nữ duy nhất giữa các nam cùng level: không có đội hình hợp lệ nào chứa người đó, nên họ không được đề xuất. Giả định tạm: app không cảnh báo riêng; host tự xếp bằng cách đổi người (vẫn bị chặn nếu sai quy tắc giới tính). Mô phỏng không tính các trường hợp này là lỗi công bằng.
+7. **Giao dịch "Phí buổi" tự động.** Giả định tạm: luôn tạo khi kết thúc buổi (kể cả 0 đồng) để sau đó đồng bộ theo cờ đã thu; host không sửa trực tiếp số tiền, chỉ xóa được. Khoản "Tiền thuê sân" chỉ tạo khi `court_fee × số sân > 0`.
+8. **Người cố định/vãng lai trong buổi cũ.** Giả định tạm: đọc `is_regular` hiện tại của danh bạ, nên đổi loại một người sẽ đổi phí mặc định của họ ở các buổi cũ (trừ khi đã sửa tay phí).
+9. **Đăng xuất.** Cookie đăng nhập là token ký có hạn 30 ngày, không lưu phía server; đăng xuất chỉ xóa cookie trên máy đó.
 
 ## 12. Dữ liệu khởi tạo (seed)
 
