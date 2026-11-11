@@ -613,6 +613,11 @@ form .error {
   color: #8a4a00;
 }
 
+.tag-group {
+  background: #e3f1ea;
+  color: var(--court);
+}
+
 .search {
   margin-bottom: 4px;
 }

@@ -68,6 +68,8 @@ export interface SessionPlayer {
   is_paid: boolean
   held: boolean
   queue_position: number
+  /** Players who came together share a group number; 0 means none. */
+  group: number
 }
 
 export interface Fees {
@@ -215,6 +217,7 @@ export const api = {
   setStatus: (id: number, status: PlayerStatus) => put<SessionState>(`/api/session-players/${id}/status`, { status }),
   setPayment: (id: number, body: { is_paid?: boolean; fee_override?: number | null }) =>
     put<SessionState>(`/api/session-players/${id}/payment`, body),
+  setGroup: (id: number, group: number) => put<SessionState>(`/api/session-players/${id}/group`, { group }),
 
   propose: (courtId: number) => post<SessionState>(`/api/courts/${courtId}/propose`),
   swap: (matchId: number, out_id: number, in_id: number) => put<SessionState>(`/api/matches/${matchId}/swap`, { out_id, in_id }),

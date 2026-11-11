@@ -4,6 +4,7 @@ import { dateVN, LEVELS, money, parseMoney, timeVN } from '../format'
 import { ErrorBanner, Field, GenderMark, LevelTag, MoneyInput, Segmented, Sheet, Shuttle, useAction } from '../ui'
 
 const POLL_MS = 3000
+const MAX_GROUP_SIZE = 4
 
 export function SessionPage() {
   // undefined: first load; null: no open session.
@@ -248,6 +249,7 @@ function CourtsView({ state, busy, act }: ViewProps) {
                   <span className="queue-name">
                     {p.name}
                     {p.held && <span className="tag tag-held">Đã xếp</span>}
+                    <GroupTag group={p.group} />
                   </span>
                   <GenderMark gender={p.gender} />
                   <LevelTag level={p.level} />
@@ -268,7 +270,10 @@ function CourtsView({ state, busy, act }: ViewProps) {
             {resting.map((p) => (
               <li key={p.id}>
                 <button className="queue-row queue-row-rest" onClick={() => setSelected(p.id)}>
-                  <span className="queue-name">{p.name}</span>
+                  <span className="queue-name">
+                    {p.name}
+                    <GroupTag group={p.group} />
+                  </span>
                   <GenderMark gender={p.gender} />
                   <LevelTag level={p.level} />
                   <span className="queue-count">{p.matches_played} trận</span>
@@ -287,6 +292,7 @@ function CourtsView({ state, busy, act }: ViewProps) {
             {selectedPlayer.gender === 'M' ? 'Nam' : 'Nữ'}, level {selectedPlayer.level}, {selectedPlayer.is_regular ? 'cố định' : 'vãng lai'}. Đã đánh{' '}
             {selectedPlayer.matches_played} trận.
           </p>
+          <GroupPicker player={selectedPlayer} players={players} busy={busy} act={act} />
           {selectedPlayer.status === 'WAITING' && (
             <button
               className="btn"
@@ -359,6 +365,37 @@ function CourtsView({ state, busy, act }: ViewProps) {
   )
 }
 
+function GroupTag({ group }: { group: number }) {
+  return group ? <span className="tag tag-group">N{group}</span> : null
+}
+
+// GroupPicker offers the groups in use plus one new group number.
+function GroupPicker({ player, players, busy, act }: { player: SessionPlayer; players: SessionPlayer[]; busy: boolean; act: Act }) {
+  const size = new Map<number, number>()
+  for (const p of players) if (p.group) size.set(p.group, (size.get(p.group) ?? 0) + 1)
+  const used = [...size.keys()].sort((a, b) => a - b)
+  let fresh = 1
+  while (size.has(fresh)) fresh++
+  const options: [number, string][] = [[0, 'Không']]
+  for (const g of [...used, fresh].sort((a, b) => a - b)) {
+    // Full groups stay listed only for their own members.
+    if ((size.get(g) ?? 0) >= MAX_GROUP_SIZE && g !== player.group) continue
+    options.push([g, `N${g}`])
+  }
+  const members = players.filter((p) => p.group && p.group === player.group && p.id !== player.id)
+  return (
+    <div className="field">
+      <span>Nhóm đi chung</span>
+      <Segmented value={player.group} onChange={(g) => !busy && g !== player.group && act(() => api.setGroup(player.id, g))} options={options} />
+      <p className="hint">
+        {members.length > 0
+          ? `Đi cùng ${members.map((p) => p.name).join(', ')}. App ưu tiên xếp chung sân, chung đội khi không làm ai phải chờ thêm.`
+          : 'Chọn cùng một số nhóm cho những người đi chung (tối đa 4 người).'}
+      </p>
+    </div>
+  )
+}
+
 function CourtCard({
   court,
   byId,
@@ -383,7 +420,10 @@ function CourtCard({
       if (!p) return null
       const body = (
         <>
-          <span className="chip-name">{p.name}</span>
+          <span className="chip-name">
+            {p.name}
+            <GroupTag group={p.group} />
+          </span>
           <span className="chip-meta">
             {p.gender === 'M' ? 'Nam' : 'Nữ'} {p.level}
           </span>
