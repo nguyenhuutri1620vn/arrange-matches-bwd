@@ -76,6 +76,7 @@ Giai đoạn sau MVP có thể mở cho nhiều host khác dùng.
 - Host có thể chuyển `WAITING` ↔ `RESTING`. `PLAYING` chỉ được đặt và gỡ bởi vòng đời trận.
 - **Xóa khỏi buổi** chỉ được phép khi người đó chưa đánh trận nào trong buổi và không ở trong trận `DRAFT`/`ONGOING`.
 - Được thêm người vào giữa buổi (xem 6.4 về số trận ưu tiên).
+- **Nhóm đi chung:** host gán số nhóm (Nhóm 1, Nhóm 2, …) cho người trong buổi để đánh dấu những người đi chung (cặp đôi, nhóm bạn), tối đa 4 người một nhóm. Nhóm chỉ có hiệu lực trong buổi đó, host có thể đổi hoặc bỏ bất cứ lúc nào. Xem 6.6.
 
 ### 5.2 Sân (Court)
 
@@ -210,6 +211,33 @@ Ghi chú hiện thực: so sánh `3 × level_lẻ` với `tổng level 3 ngườ
 - Ví dụ: An vừa cặp với Bình. Nếu trận kế tiếp có hai phương án ngang nhau về số trận và level, app chọn phương án An không cặp lại với Bình.
 - Đây là ưu tiên thấp nhất: chỉ dùng để chọn giữa các phương án đã ngang nhau về công bằng số trận và cân bằng level.
 
+### 6.6 Hạn chế đánh lệch giới (3-1)
+
+- Trận 3 nam 1 nữ hoặc 3 nữ 1 nam chỉ được đề xuất khi trong số người đang đến lượt (cùng mức công bằng) không còn đội hình 4 nam, 4 nữ hoặc 2 nam 2 nữ nào hợp lệ.
+- Không gọi thêm người có số trận cao hơn chỉ để tránh trận 3-1: công bằng số trận vẫn đứng trên.
+
+### 6.7 Nhóm đi chung
+
+- Người cùng nhóm (5.1) được ưu tiên vào chung sân, và khi chia đội thì ưu tiên đứng chung đội (vẫn phải trong ngưỡng cân bằng 6.2).
+- Ưu tiên này đứng sau công bằng số trận và sau `consecutive_rest`: không ai phải chờ thêm để nhóm được đi chung. Khi số trận trong nhóm lệch nhau, nhóm sẽ tự tách ra đánh với người khác.
+- Hai người cùng nhóm không bị tính là "trùng lặp" (6.5) khi chơi chung lại.
+
+### 6.8 Thứ tự xếp hạng đề xuất
+
+Trong cửa sổ ứng viên (5.4), các tổ hợp hợp lệ được xếp theo:
+
+1. Số trận ưu tiên, giữ tối đa người ở mức `min`.
+2. Nhìn trước: không để những người ít trận còn lại rơi vào nhóm không xếp được với nhau; các trận kế tiếp đạt số trận ưu tiên thấp nhất.
+3. Ưu tiên người khó xếp (ít đội hình hợp lệ).
+4. Tránh trận 3-1 (6.6). Đứng sau bước 3 vì nếu đứng trước, mô phỏng 1 sân 7 người có buổi lệch 2 trận.
+5. `consecutive_rest` lớn hơn.
+6. Nhiều người cùng nhóm hơn (6.7): số cặp cùng nhóm trong sân, rồi số cặp cùng nhóm đứng chung đội.
+7. Chênh lệch level nhỏ hơn.
+8. Ít trùng lặp hơn (6.5).
+9. `queued_at` sớm hơn.
+
+Khi chia 4 người thành 2 đội: trong các cách chia cân bằng, chọn cách có nhiều cặp cùng nhóm đứng chung đội nhất, rồi chênh lệch nhỏ nhất, rồi ít trùng lặp nhất.
+
 ## 7. Yêu cầu phi chức năng
 
 - **Hiệu năng:** ghép trận cho một sân phải hoàn thành dưới 200 ms với tối đa 30 người trong hàng chờ.
@@ -229,7 +257,7 @@ ID là số nguyên tự tăng.
 |---|---|
 | sessions | id, date, start_time, end_time, status (OPEN/ENDED), court_count, fee_male, fee_female, court_fee |
 | players | id, name, gender, level, is_regular, monthly_fee, note, deleted_at |
-| session_players | id, session_id, player_id, status (WAITING/PLAYING/RESTING), matches_played, priority_offset, consecutive_rest, queued_at, checked_in_at, fee_override, is_paid |
+| session_players | id, session_id, player_id, status (WAITING/PLAYING/RESTING), matches_played, priority_offset, consecutive_rest, queued_at, checked_in_at, fee_override, is_paid, group_no (nullable) |
 | courts | id, session_id, index, status (EMPTY/IN_USE), current_match_id |
 | matches | id, session_id, court_id, status (DRAFT/ONGOING/FINISHED), started_at, finished_at |
 | match_players | id, match_id, session_player_id, team (A/B) |
@@ -274,12 +302,13 @@ Mô phỏng: Fable viết chương trình mô phỏng với danh sách người 
 - Giá thuê sân (`court_fee`): host tự nhập sau trong phần cấu hình; mặc định 0. Đây là khoản chi.
 - 2026-11-11: Host sửa phí tháng của Trang thành 667.000 (trước là 666.000). Thêm hai khoản chi "Chi phí ban đầu của sân" cho Trí và Trang (mục 12).
 - 2026-11-11: Thêm chi phí ban đầu tiền sân 1.400.000 và tiền cầu 630.000 (mục 12).
+- 2026-11-11: Thêm nhóm đi chung (gán theo buổi, tối đa 4 người) và hạn chế trận 3-1 (mục 6.6 đến 6.8). Host chọn: hạn chế chờ hơn là giữ nhóm.
 
 ## 11. Câu hỏi còn mở
 
 Các điểm dưới đây phát sinh khi dựng bản đầu tiên (2026-11-11). Mỗi điểm đang chạy theo **giả định tạm**; host xác nhận hoặc đổi.
 
-1. **Thứ tự xếp hạng đề xuất.** Giả định tạm: (1) số trận ưu tiên, giữ tối đa người ở mức `min`; (2) nhìn trước: lựa chọn không được để những người ít trận còn lại rơi vào nhóm mà quy tắc giới tính/cân bằng không xếp được với nhau; (3) ưu tiên người khó xếp (ít đội hình hợp lệ) khi đang có đội hình cho họ; (4) `consecutive_rest`; (5) chênh lệch level nhỏ nhất; (6) ít trùng lặp; (7) `queued_at`. Bước (2) và (3) không có trong mục 6.4 nhưng cần để mô phỏng đạt chênh lệch ≤ 1. Tối đa 16 người đầu hàng chờ (theo thứ tự ưu tiên) được xét cho một đề xuất.
+1. **Thứ tự xếp hạng đề xuất.** Đã chốt 2026-11-11, xem 6.8. Bước nhìn trước và người khó xếp không có trong mục 6.4 nhưng cần để mô phỏng đạt chênh lệch ≤ 1. Tối đa 16 người đầu hàng chờ (theo thứ tự ưu tiên) được xét cho một đề xuất.
 2. **Nhóm 4 người lặp lại.** Với 8 người 1 sân và mọi người cùng level/giới tính, ưu tiên `consecutive_rest` khiến hai nhóm 4 người luân phiên cố định (chỉ đổi cách chia cặp). Giả định tạm: giữ đúng thứ tự ưu tiên của mục 6.4. Nếu host muốn trộn người nhiều hơn thì cần hạ ưu tiên của `consecutive_rest` xuống dưới "tránh trùng lặp".
 3. **Khi nào app tự đề xuất.** Giả định tạm: tự đề xuất cho sân vừa kết thúc trận; các trường hợp khác host bấm "Đề xuất trận" trên sân trống. Lý do: nếu tự đề xuất mọi lúc thì đề xuất vừa bị bỏ sẽ hiện lại ngay.
 4. **Đổi người trong đề xuất.** Giả định tạm: sau khi đổi, app chia lại hai đội cho 4 người mới (hợp lệ giới tính, lệch level nhỏ nhất) thay vì giữ nguyên vị trí người bị thay.

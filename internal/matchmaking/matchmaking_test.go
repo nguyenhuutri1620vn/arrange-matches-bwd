@@ -285,3 +285,102 @@ func TestProposeUnder200msWith30Players(t *testing.T) {
 		t.Fatalf("Propose took %v, want under 200ms", d)
 	}
 }
+
+func TestArrangeKeepsGroupOnOneTeamWithinBalance(t *testing.T) {
+	// 1+2 vs 3+4 has diff 2 (allowed), 1+3 vs 2+4 has diff 0.
+	four := [4]Candidate{cand(1, M, "TB"), cand(2, M, "TB-"), cand(3, M, "TB-"), cand(4, M, "TBY")}
+	four[0].Group, four[1].Group = 1, 1
+	l, err := Arrange(four, rules)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !teammates(l, 1, 2) || l.GroupedTeams != 1 || l.Diff != 2 {
+		t.Fatalf("want group 1+2 together with diff 2, got %+v", l)
+	}
+
+	// Pairing the group would exceed the balance threshold: balance wins.
+	lopsided := [4]Candidate{cand(1, M, "TB+"), cand(2, M, "TB+"), cand(3, M, "Y+"), cand(4, M, "Y+")}
+	lopsided[0].Group, lopsided[1].Group = 1, 1
+	l, err = Arrange(lopsided, rules)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if teammates(l, 1, 2) || !l.Balanced {
+		t.Fatalf("group pairing broke the balance: %+v", l)
+	}
+}
+
+func TestArrangeDoesNotCountGroupAsRepeat(t *testing.T) {
+	four := [4]Candidate{cand(1, M, "TB"), cand(2, M, "TB"), cand(3, M, "TB"), cand(4, M, "TB")}
+	four[0].Group, four[1].Group = 1, 1
+	four[0].RecentTeammates, four[1].RecentTeammates = []int64{2}, []int64{1}
+	l, err := Arrange(four, rules)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !teammates(l, 1, 2) || l.Repeats != 0 {
+		t.Fatalf("group was split as a repeat: %+v", l)
+	}
+}
+
+func TestProposePrefersGroupOnSameCourt(t *testing.T) {
+	var cands []Candidate
+	for id := int64(1); id <= 8; id++ {
+		cands = append(cands, cand(id, M, "TB"))
+	}
+	// 2 and 7 came together; 7 is late in the queue but ties on fairness.
+	cands[1].Group, cands[6].Group = 1, 1
+	l, err := Propose(cands, rules)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !teammates(l, 2, 7) {
+		t.Fatalf("want 2 and 7 on one team, got %+v", l)
+	}
+}
+
+func TestProposeGroupNeverBeatsFairness(t *testing.T) {
+	var cands []Candidate
+	for id := int64(1); id <= 5; id++ {
+		cands = append(cands, cand(id, M, "TB"))
+	}
+	cands[4].PriorityCount = 1
+	cands[0].Group, cands[4].Group = 1, 1
+	l, err := Propose(cands, rules)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sameIDs(ids(l), []int64{1, 2, 3, 4}) {
+		t.Fatalf("group pulled in a player with more matches: %+v", l)
+	}
+}
+
+func TestProposeAvoidsThreeOneWhenMixedLineupExists(t *testing.T) {
+	// 3 men + woman 4 is a valid 3-1 lineup and has rested longer, but
+	// 2 men + 2 women also fits.
+	cands := []Candidate{
+		cand(1, M, "TB"), cand(2, M, "TB"), cand(3, M, "TB"),
+		cand(4, F, "TBY"), cand(5, F, "TBY"),
+	}
+	for i := 0; i < 4; i++ {
+		cands[i].ConsecutiveRest = 1
+	}
+	l, err := Propose(cands, rules)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := ids(l)
+	if !(contains(got, 4) && contains(got, 5)) {
+		t.Fatalf("want a 2-2 lineup, got %+v", l)
+	}
+
+	// With only one woman waiting at the lowest count, 3-1 is still allowed.
+	cands[4].PriorityCount = 1
+	l, err = Propose(cands, rules)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sameIDs(ids(l), []int64{1, 2, 3, 4}) {
+		t.Fatalf("want the 3-1 lineup at min count, got %+v", l)
+	}
+}

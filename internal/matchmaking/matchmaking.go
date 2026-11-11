@@ -22,6 +22,9 @@ type Candidate struct {
 	// (already limited to the configured lookback).
 	RecentTeammates []int64
 	RecentOpponents []int64
+	// Group marks players who came together (0: none). Same-group players
+	// are kept on one court and one team when fairness allows.
+	Group int
 }
 
 // Lineup is a proposed match.
@@ -33,6 +36,8 @@ type Lineup struct {
 	Balanced bool
 	// Repeats counts teammate and opponent pairings seen recently.
 	Repeats int
+	// GroupedTeams counts teams whose two players share a group.
+	GroupedTeams int
 }
 
 // SortByPriority orders candidates by the fairness rule: fewer priority
@@ -77,10 +82,13 @@ const (
 //     in a group the gender or balance rules cannot seat together,
 //  3. how hard the picked players are to seat (those with the fewest
 //     valid lineups go first, while a lineup for them is available),
-//  4. consecutive rest (longer rest first),
-//  5. team level difference (smaller first),
-//  6. repeated teammates/opponents (fewer first),
-//  7. queue order.
+//  4. gender composition (3-1 lineups only when no 4-0 or 2-2 ties),
+//  5. consecutive rest (longer rest first),
+//  6. players who came together (more same-group pairs on the court,
+//     then on one team),
+//  7. team level difference (smaller first),
+//  8. repeated teammates/opponents (fewer first),
+//  9. queue order.
 //
 // Gender rules and the balance threshold are hard constraints. It returns
 // domain.ErrNotEnoughPlayers or domain.ErrNoValidLineup when nothing fits.
@@ -139,8 +147,11 @@ type option struct {
 	rests  [4]int
 	// stranded counts lowest-tier players this pick leaves without a
 	// lineup among themselves.
-	stranded int
-	future   []int
+	stranded  int
+	future    []int
+	oddGender bool
+	// grouped counts pairs among the four that share a group.
+	grouped int
 	// scarcity lists, hardest to seat first, how many valid lineups each
 	// picked player could join.
 	scarcity [4]int
@@ -156,10 +167,19 @@ func (o *option) better(b *option) bool {
 	if c := compareInts(o.scarcity[:], b.scarcity[:]); c != 0 {
 		return c < 0
 	}
+	if o.oddGender != b.oddGender {
+		return !o.oddGender
+	}
 	for i := range o.rests {
 		if o.rests[i] != b.rests[i] {
 			return o.rests[i] > b.rests[i]
 		}
+	}
+	if o.grouped != b.grouped {
+		return o.grouped > b.grouped
+	}
+	if o.lineup.GroupedTeams != b.lineup.GroupedTeams {
+		return o.lineup.GroupedTeams > b.lineup.GroupedTeams
 	}
 	if o.lineup.Diff != b.lineup.Diff {
 		return o.lineup.Diff < b.lineup.Diff
@@ -204,11 +224,14 @@ func bestInWindow(sorted []Candidate, end int, rules domain.MatchRules, useLooka
 							ties = ties[:0]
 						}
 					}
-					lineup, err := Arrange([4]Candidate{w[a], w[b], w[c], w[d]}, rules)
+					four := [4]Candidate{w[a], w[b], w[c], w[d]}
+					lineup, err := Arrange(four, rules)
 					if err != nil || !lineup.Balanced {
 						continue
 					}
 					o.lineup = lineup
+					o.oddGender = countMen(&four[0], &four[1], &four[2], &four[3])%2 == 1
+					o.grouped = groupedPairs(four)
 					ties = append(ties, o)
 				}
 			}
@@ -450,6 +473,7 @@ func (la *lookahead) bestCounts(w []slot, firstOnly bool) [][4]int {
 }
 
 // Arrange splits four given players into the best gender-valid teams:
+// balanced first, then (among balanced splits) more same-group teams, then
 // smallest level difference, then fewest repeats. The balance threshold is
 // reported through Lineup.Balanced, not enforced, so the host can override
 // it. It returns domain.ErrInvalidGenderLineup when no split is allowed.
@@ -464,7 +488,7 @@ func Arrange(four [4]Candidate, rules domain.MatchRules) (Lineup, error) {
 		if err != nil {
 			continue
 		}
-		if !found || lineup.Diff < best.Diff || (lineup.Diff == best.Diff && lineup.Repeats < best.Repeats) {
+		if !found || splitBetter(&lineup, &best) {
 			best, found = lineup, true
 		}
 	}
@@ -472,6 +496,21 @@ func Arrange(four [4]Candidate, rules domain.MatchRules) (Lineup, error) {
 		return Lineup{}, domain.ErrInvalidGenderLineup
 	}
 	return best, nil
+}
+
+func splitBetter(l, b *Lineup) bool {
+	if l.Balanced != b.Balanced {
+		return l.Balanced
+	}
+	// Grouping never outweighs balance, so an unbalanced split is ranked by
+	// level difference alone.
+	if l.Balanced && l.GroupedTeams != b.GroupedTeams {
+		return l.GroupedTeams > b.GroupedTeams
+	}
+	if l.Diff != b.Diff {
+		return l.Diff < b.Diff
+	}
+	return l.Repeats < b.Repeats
 }
 
 // Evaluate checks two given teams against the gender rules and measures
@@ -486,12 +525,20 @@ func Evaluate(teamA, teamB [2]Candidate, rules domain.MatchRules) (Lineup, error
 	if diff < 0 {
 		diff = -diff
 	}
+	grouped := 0
+	if sameGroup(a1, a2) {
+		grouped++
+	}
+	if sameGroup(b1, b2) {
+		grouped++
+	}
 	return Lineup{
-		TeamA:    [2]int64{a1.ID, a2.ID},
-		TeamB:    [2]int64{b1.ID, b2.ID},
-		Diff:     diff,
-		Balanced: diff <= rules.BalanceThreshold,
-		Repeats:  countRepeats(a1, a2, b1, b2),
+		TeamA:        [2]int64{a1.ID, a2.ID},
+		TeamB:        [2]int64{b1.ID, b2.ID},
+		Diff:         diff,
+		Balanced:     diff <= rules.BalanceThreshold,
+		Repeats:      countRepeats(a1, a2, b1, b2),
+		GroupedTeams: grouped,
 	}, nil
 }
 
@@ -539,15 +586,39 @@ func countMen(ps ...*Candidate) int {
 	return n
 }
 
+func sameGroup(a, b *Candidate) bool {
+	return a.Group != 0 && a.Group == b.Group
+}
+
+func groupedPairs(four [4]Candidate) int {
+	n := 0
+	for i := 0; i < 4; i++ {
+		for j := i + 1; j < 4; j++ {
+			if sameGroup(&four[i], &four[j]) {
+				n++
+			}
+		}
+	}
+	return n
+}
+
+// countRepeats skips same-group pairs: playing together again is what they
+// came for.
 func countRepeats(a1, a2, b1, b2 *Candidate) int {
 	n := 0
 	for _, pair := range [2][2]*Candidate{{a1, a2}, {b1, b2}} {
+		if sameGroup(pair[0], pair[1]) {
+			continue
+		}
 		if contains(pair[0].RecentTeammates, pair[1].ID) || contains(pair[1].RecentTeammates, pair[0].ID) {
 			n++
 		}
 	}
 	for _, a := range [2]*Candidate{a1, a2} {
 		for _, b := range [2]*Candidate{b1, b2} {
+			if sameGroup(a, b) {
+				continue
+			}
 			if contains(a.RecentOpponents, b.ID) || contains(b.RecentOpponents, a.ID) {
 				n++
 			}
