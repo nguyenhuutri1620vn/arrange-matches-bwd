@@ -59,6 +59,8 @@ type SessionPlayer struct {
 	CheckedInAt     time.Time
 	FeeOverride     *int64
 	IsPaid          bool
+	// Group marks players who came together (0: none).
+	Group int
 }
 
 // PriorityCount is the match count used for fairness. MatchesPlayed stays

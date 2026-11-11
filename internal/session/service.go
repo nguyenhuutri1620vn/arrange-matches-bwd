@@ -285,6 +285,7 @@ func candidateOf(p *domain.SessionPlayer, h history) matchmaking.Candidate {
 		PriorityCount:   p.PriorityCount(),
 		ConsecutiveRest: p.ConsecutiveRest,
 		QueuedAt:        p.QueuedAt,
+		Group:           p.Group,
 	}
 	if r := h[p.ID]; r != nil {
 		c.RecentTeammates, c.RecentOpponents = r.teammates, r.opponents

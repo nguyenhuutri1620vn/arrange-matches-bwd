@@ -147,6 +147,18 @@ func (s *server) setPlayerStatus(r *http.Request) (any, error) {
 	})
 }
 
+func (s *server) setPlayerGroup(r *http.Request) (any, error) {
+	var req struct {
+		Group int `json:"group"`
+	}
+	if err := decode(r, &req); err != nil {
+		return nil, err
+	}
+	return stateAction(r, func(id int64) (*session.State, error) {
+		return s.sessions.SetPlayerGroup(r.Context(), id, req.Group)
+	})
+}
+
 func (s *server) setPayment(r *http.Request) (any, error) {
 	// fee_override distinguishes "absent" (leave as is) from null (clear).
 	var req struct {

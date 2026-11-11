@@ -3,6 +3,8 @@ package domain
 const (
 	MinCourts = 1
 	MaxCourts = 3
+	// MaxGroupSize caps players who came together; four fill a court.
+	MaxGroupSize = 4
 )
 
 // MatchRules are the tunable thresholds of the matchmaking rules.

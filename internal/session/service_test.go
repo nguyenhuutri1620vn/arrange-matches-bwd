@@ -533,3 +533,52 @@ func TestSeedIsIdempotent(t *testing.T) {
 		t.Fatalf("transactions = %d, want 10", len(txs))
 	}
 }
+
+func TestGroupStaysTogetherAcrossMatches(t *testing.T) {
+	f := newFixture(t)
+	state := f.open(1, 4)
+	a, b := state.Players[0].ID, state.Players[3].ID
+	f.must(f.svc.SetPlayerGroup(f.ctx, a, 1))
+	state = f.must(f.svc.SetPlayerGroup(f.ctx, b, 1))
+	if state.Players[0].Group != 1 || state.Players[3].Group != 1 {
+		t.Fatalf("group not saved: %+v", state.Players)
+	}
+	team := func(m *MatchView, id int64) domain.Team {
+		for _, mp := range m.Players {
+			if mp.SessionPlayerID == id {
+				return mp.Team
+			}
+		}
+		return ""
+	}
+	state = f.must(f.svc.Propose(f.ctx, state.Courts[0].ID))
+	for i := 0; i < 2; i++ {
+		m := state.Courts[0].Match
+		if team(m, a) != team(m, b) {
+			t.Fatalf("match %d split the group", i+1)
+		}
+		state = f.must(f.svc.Confirm(f.ctx, m.ID, false))
+		state = f.must(f.svc.Finish(f.ctx, m.ID))
+	}
+}
+
+func TestSetPlayerGroupLimits(t *testing.T) {
+	f := newFixture(t)
+	state := f.open(1, 5)
+	for i := 0; i < domain.MaxGroupSize; i++ {
+		f.must(f.svc.SetPlayerGroup(f.ctx, state.Players[i].ID, 2))
+	}
+	if _, err := f.svc.SetPlayerGroup(f.ctx, state.Players[4].ID, 2); !errors.Is(err, domain.ErrGroupFull) {
+		t.Fatalf("fifth member: want ErrGroupFull, got %v", err)
+	}
+	if _, err := f.svc.SetPlayerGroup(f.ctx, state.Players[0].ID, 2); err != nil {
+		t.Fatalf("re-saving a member's own group: %v", err)
+	}
+	if _, err := f.svc.SetPlayerGroup(f.ctx, state.Players[0].ID, -1); !errors.Is(err, domain.ErrInvalidGroup) {
+		t.Fatalf("negative group: want ErrInvalidGroup, got %v", err)
+	}
+	state = f.must(f.svc.SetPlayerGroup(f.ctx, state.Players[0].ID, 0))
+	if state.Players[0].Group != 0 {
+		t.Fatal("group 0 should clear it")
+	}
+}

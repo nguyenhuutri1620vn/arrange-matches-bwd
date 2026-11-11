@@ -159,6 +159,40 @@ func (s *Service) SetPlayerStatus(ctx context.Context, sessionPlayerID int64, st
 	})
 }
 
+// SetPlayerGroup marks who came together; group 0 clears it. Existing
+// proposals are kept: the grouping applies from the next one.
+func (s *Service) SetPlayerGroup(ctx context.Context, sessionPlayerID int64, group int) (*State, error) {
+	if group < 0 {
+		return nil, domain.ErrInvalidGroup
+	}
+	return s.change(ctx, func(q *storage.Queries) (int64, error) {
+		p, err := q.GetSessionPlayer(ctx, sessionPlayerID)
+		if err != nil {
+			return 0, err
+		}
+		if _, err := openSession(ctx, q, p.SessionID); err != nil {
+			return 0, err
+		}
+		if group != 0 && group != p.Group {
+			players, err := q.ListSessionPlayers(ctx, p.SessionID)
+			if err != nil {
+				return 0, err
+			}
+			n := 0
+			for _, o := range players {
+				if o.Group == group {
+					n++
+				}
+			}
+			if n >= domain.MaxGroupSize {
+				return 0, domain.ErrGroupFull
+			}
+		}
+		p.Group = group
+		return p.SessionID, q.UpdateSessionPlayer(ctx, p)
+	})
+}
+
 // PaymentUpdate changes a player's paid flag and/or fee override.
 type PaymentUpdate struct {
 	IsPaid *bool

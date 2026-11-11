@@ -84,6 +84,7 @@ func New(cfg Config) http.Handler {
 	route("DELETE /api/session-players/{id}", s.removeSessionPlayer)
 	route("PUT /api/session-players/{id}/status", s.setPlayerStatus)
 	route("PUT /api/session-players/{id}/payment", s.setPayment)
+	route("PUT /api/session-players/{id}/group", s.setPlayerGroup)
 
 	route("POST /api/courts/{id}/propose", s.propose)
 	route("PUT /api/matches/{id}/swap", s.swap)

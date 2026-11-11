@@ -125,7 +125,7 @@ func (q *Queries) UpdateCourt(ctx context.Context, c domain.Court) error {
 }
 
 const sessionPlayerColumns = `sp.id, sp.session_id, sp.player_id, p.name, p.gender, p.level, p.is_regular,
-	sp.status, sp.matches_played, sp.priority_offset, sp.consecutive_rest, sp.queued_at, sp.checked_in_at, sp.fee_override, sp.is_paid`
+	sp.status, sp.matches_played, sp.priority_offset, sp.consecutive_rest, sp.queued_at, sp.checked_in_at, sp.fee_override, sp.is_paid, sp.group_no`
 
 const sessionPlayerFrom = ` FROM session_players sp JOIN players p ON p.id = sp.player_id `
 
@@ -133,12 +133,13 @@ func scanSessionPlayer(row interface{ Scan(...any) error }) (domain.SessionPlaye
 	var (
 		p                 domain.SessionPlayer
 		queued, checkedIn int64
-		override          sql.NullInt64
+		override, group   sql.NullInt64
 	)
 	err := row.Scan(&p.ID, &p.SessionID, &p.PlayerID, &p.Name, &p.Gender, &p.Level, &p.IsRegular,
-		&p.Status, &p.MatchesPlayed, &p.PriorityOffset, &p.ConsecutiveRest, &queued, &checkedIn, &override, &p.IsPaid)
+		&p.Status, &p.MatchesPlayed, &p.PriorityOffset, &p.ConsecutiveRest, &queued, &checkedIn, &override, &p.IsPaid, &group)
 	p.QueuedAt, p.CheckedInAt = fromMs(queued), fromMs(checkedIn)
 	p.FeeOverride = intPtr(override)
+	p.Group = int(group.Int64)
 	if errors.Is(err, sql.ErrNoRows) {
 		return p, domain.ErrNotFound
 	}
@@ -188,9 +189,13 @@ func (q *Queries) InsertSessionPlayer(ctx context.Context, p domain.SessionPlaye
 // UpdateSessionPlayer saves the mutable in-session state of a player.
 func (q *Queries) UpdateSessionPlayer(ctx context.Context, p domain.SessionPlayer) error {
 	_, err := q.db.ExecContext(ctx,
-		`UPDATE session_players SET status = ?, matches_played = ?, priority_offset = ?, consecutive_rest = ?, queued_at = ?, fee_override = ?, is_paid = ? WHERE id = ?`,
-		p.Status, p.MatchesPlayed, p.PriorityOffset, p.ConsecutiveRest, toMs(p.QueuedAt), nullInt(p.FeeOverride), boolInt(p.IsPaid), p.ID)
+		`UPDATE session_players SET status = ?, matches_played = ?, priority_offset = ?, consecutive_rest = ?, queued_at = ?, fee_override = ?, is_paid = ?, group_no = ? WHERE id = ?`,
+		p.Status, p.MatchesPlayed, p.PriorityOffset, p.ConsecutiveRest, toMs(p.QueuedAt), nullInt(p.FeeOverride), boolInt(p.IsPaid), nullGroup(p.Group), p.ID)
 	return err
+}
+
+func nullGroup(g int) sql.NullInt64 {
+	return sql.NullInt64{Int64: int64(g), Valid: g != 0}
 }
 
 func (q *Queries) DeleteSessionPlayer(ctx context.Context, id int64) error {
