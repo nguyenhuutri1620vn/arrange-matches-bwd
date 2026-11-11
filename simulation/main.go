@@ -24,6 +24,8 @@ type options struct {
 	courts, players, runs  int
 	matchMinutes, duration int
 	seed                   int64
+	// groups pairs up that many players as having come together.
+	groups int
 }
 
 type result struct {
@@ -46,6 +48,7 @@ func main() {
 	flag.IntVar(&opt.matchMinutes, "match-minutes", 15, "length of one match")
 	flag.IntVar(&opt.duration, "duration", 120, "session length in minutes")
 	flag.Int64Var(&opt.seed, "seed", 1, "random seed")
+	flag.IntVar(&opt.groups, "groups", 0, "number of random pairs who came together")
 	flag.StringVar(&file, "file", "simulation/players.csv", "CSV of players: name,gender,level")
 	flag.BoolVar(&matrix, "matrix", false, "run 1-3 courts with 7 to 8 players per court")
 	verbose := flag.Bool("v", false, "print every failing run")
@@ -198,6 +201,10 @@ func runSession(opt options, pool []poolPlayer, picked []int) (spread, idle, exc
 			ID: int64(i + 1), Gender: pool[idx].gender, Level: pool[idx].level,
 			Status: domain.PlayerWaiting, QueuedAt: start.Add(time.Duration(i) * time.Second),
 		}}
+		// picked is a random permutation, so consecutive players form random pairs.
+		if i < 2*opt.groups {
+			players[i].Group = i/2 + 1
+		}
 	}
 	byID := func(id int64) *simPlayer { return players[id-1] }
 
@@ -391,6 +398,7 @@ func candidate(p *simPlayer, rules domain.MatchRules) matchmaking.Candidate {
 	c := matchmaking.Candidate{
 		ID: p.ID, Gender: p.Gender, Level: p.Level,
 		PriorityCount: p.PriorityCount(), ConsecutiveRest: p.ConsecutiveRest, QueuedAt: p.QueuedAt,
+		Group: p.Group,
 	}
 	for _, ids := range p.teammates {
 		c.RecentTeammates = append(c.RecentTeammates, ids...)
