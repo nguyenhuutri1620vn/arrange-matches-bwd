@@ -272,6 +272,8 @@ Mô phỏng: Fable viết chương trình mô phỏng với danh sách người 
 - Mô phỏng: Fable dùng dữ liệu giả lập; host tự mô phỏng với danh sách thật sau.
 
 - Giá thuê sân (`court_fee`): host tự nhập sau trong phần cấu hình; mặc định 0. Đây là khoản chi.
+- 2026-11-11: Host sửa phí tháng của Trang thành 667.000 (trước là 666.000). Thêm hai khoản chi "Chi phí ban đầu của sân" cho Trí và Trang (mục 12).
+- 2026-11-11: Thêm chi phí ban đầu tiền sân 1.400.000 và tiền cầu 630.000 (mục 12).
 
 ## 11. Câu hỏi còn mở
 
@@ -296,7 +298,7 @@ Dữ liệu thật trong quá khứ của host, nạp một lần khi khởi t�
 | Tên | Giới tính | Level | Phí tháng (`monthly_fee`) |
 |---|---|---|---|
 | Trí | Nam | TB- | 1.333.000 |
-| Trang | Nữ | TB | 666.000 |
+| Trang | Nữ | TB | 667.000 |
 | Huyền | Nữ | Y | 0 |
 
 Mỗi người có một giao dịch thu "Phí tháng" **đã thu**, tháng 11/2026 (ngày giao dịch 2026-11-01), gắn `player_id` với đúng số tiền trên. Huyền 0 đồng vẫn tạo để báo cáo hiện đủ người.
@@ -309,3 +311,5 @@ Mỗi người có một giao dịch thu "Phí tháng" **đã thu**, tháng 11/2
 | 2026-11-09 | 2 | 790.000 | 220.000 |
 
 Buổi cũ không tự sinh khoản chi thuê sân theo `court_fee`; chỉ dùng đúng số liệu trong bảng.
+
+**Chi phí ban đầu của sân** (đã đưa vào chi, ngày 2026-11-01, danh mục "Chi khác"): tiền của hai người cố định Trí (1.333.000) và Trang (667.000) đã dùng để trang bị sân. Hai khoản này được ghi thêm như khoản chi, không bỏ khoản thu "Phí tháng" tương ứng. Tiền sân (1.400.000, danh mục "Tiền thuê sân") và tiền cầu (630.000, danh mục "Cầu") cũng là chi phí ban đầu, ghi cùng ngày 2026-11-01. Tổng chi tháng 11/2026 tăng thêm 4.030.000.

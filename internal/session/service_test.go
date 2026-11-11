@@ -529,7 +529,7 @@ func TestSeedIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(txs) != 6 {
-		t.Fatalf("transactions = %d, want 6", len(txs))
+	if len(txs) != 10 {
+		t.Fatalf("transactions = %d, want 10", len(txs))
 	}
 }

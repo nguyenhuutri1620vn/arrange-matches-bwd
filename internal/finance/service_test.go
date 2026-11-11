@@ -37,7 +37,7 @@ func TestSeedReportNovember2026(t *testing.T) {
 	if len(r.RegularPayments) != 3 {
 		t.Fatalf("regular payments = %d, want 3 (Huyền's 0 included)", len(r.RegularPayments))
 	}
-	if r.RegularIncome != 1333000+666000 {
+	if r.RegularIncome != 1333000+667000 {
 		t.Fatalf("regular income = %d", r.RegularIncome)
 	}
 	if r.CasualIncome != 315000+790000 {
@@ -46,8 +46,8 @@ func TestSeedReportNovember2026(t *testing.T) {
 	if len(r.Sessions) != 2 || r.SessionCount != 2 {
 		t.Fatalf("sessions = %d, want 2", len(r.Sessions))
 	}
-	if r.Expense != 220000 {
-		t.Fatalf("expense = %d, want 220000", r.Expense)
+	if r.Expense != 220000+1333000+667000+1400000+630000 {
+		t.Fatalf("expense = %d, want 3650000", r.Expense)
 	}
 	if r.Sessions[0].Expense != 0 || r.Sessions[1].Expense != 220000 || r.Sessions[0].PlayerCount != 0 {
 		t.Fatalf("session rows: %+v", r.Sessions)
