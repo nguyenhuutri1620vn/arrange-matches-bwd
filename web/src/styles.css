@@ -657,8 +657,12 @@ form .error {
 }
 
 .facts-row b {
-  font-size: 0.9375rem;
+  font-size: 0.8125rem;
   white-space: nowrap;
+}
+
+.tree-body .facts-row li {
+  padding: 8px;
 }
 
 .fee-list,
@@ -834,8 +838,12 @@ form .error {
   border-top: 1px solid var(--line);
 }
 
-.lines li > :last-child {
+.lines li > :first-child {
   flex: none;
+  max-width: 62%;
+}
+
+.lines li > :last-child {
   text-align: right;
 }
 
