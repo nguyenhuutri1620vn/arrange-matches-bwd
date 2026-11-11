@@ -1,0 +1,4 @@
+{$DOMAIN} {
+	# Caddy sets X-Forwarded-Proto, which the app uses to mark login cookies Secure.
+	reverse_proxy app:8080
+}

@@ -1,0 +1,35 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    # Secrets come from .env on the host; the image never contains it.
+    env_file: .env
+    # Overrides any values in .env so the container always uses its volume.
+    environment:
+      DB_PATH: /data/badminton.db
+      ADDR: ":8080"
+    volumes:
+      - app-data:/data
+    # Not published: only Caddy can reach the app.
+    expose:
+      - "8080"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  app-data:
+  caddy-data:
+  caddy-config:
