@@ -356,13 +356,13 @@ func TestProposeGroupNeverBeatsFairness(t *testing.T) {
 }
 
 func TestProposeAvoidsThreeOneWhenMixedLineupExists(t *testing.T) {
-	// 3 men + woman 4 is a valid 3-1 lineup and has rested longer, but
-	// 2 men + 2 women also fits.
+	// 3 men + woman 4 is a valid 3-1 lineup and the men have rested
+	// longer, but 2 men + 2 women also fits.
 	cands := []Candidate{
 		cand(1, M, "TB"), cand(2, M, "TB"), cand(3, M, "TB"),
 		cand(4, F, "TBY"), cand(5, F, "TBY"),
 	}
-	for i := 0; i < 4; i++ {
+	for i := 0; i < 3; i++ {
 		cands[i].ConsecutiveRest = 1
 	}
 	l, err := Propose(cands, rules)
@@ -374,7 +374,18 @@ func TestProposeAvoidsThreeOneWhenMixedLineupExists(t *testing.T) {
 		t.Fatalf("want a 2-2 lineup, got %+v", l)
 	}
 
+	// Once woman 4 has been skipped, rest wins again.
+	cands[3].ConsecutiveRest = 1
+	l, err = Propose(cands, rules)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sameIDs(ids(l), []int64{1, 2, 3, 4}) {
+		t.Fatalf("want the 3-1 lineup after woman 4 was skipped, got %+v", l)
+	}
+
 	// With only one woman waiting at the lowest count, 3-1 is still allowed.
+	cands[3].ConsecutiveRest = 0
 	cands[4].PriorityCount = 1
 	l, err = Propose(cands, rules)
 	if err != nil {
@@ -382,5 +393,22 @@ func TestProposeAvoidsThreeOneWhenMixedLineupExists(t *testing.T) {
 	}
 	if !sameIDs(ids(l), []int64{1, 2, 3, 4}) {
 		t.Fatalf("want the 3-1 lineup at min count, got %+v", l)
+	}
+}
+
+// A woman who can only join a 3-1 right now waits one turn instead of
+// pushing out an all-men lineup (seen live: the other women were on the
+// first court's proposal).
+func TestProposeLoneWomanWaitsForMixedLineup(t *testing.T) {
+	cands := []Candidate{
+		cand(3, M, "TB"), cand(4, M, "TB-"), cand(5, M, "TB"), cand(6, F, "Y+"),
+		cand(7, M, "TB"), cand(8, M, "TB"), cand(11, M, "TB"), cand(13, M, "TB-"),
+	}
+	l, err := Propose(cands, rules)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contains(ids(l), 6) {
+		t.Fatalf("want an all-men lineup, got %+v", l)
 	}
 }

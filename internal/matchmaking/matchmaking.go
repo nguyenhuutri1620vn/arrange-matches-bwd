@@ -80,9 +80,10 @@ const (
 //     should still split into valid lineups, and the next matches should
 //     reach the lowest counts possible, so a pick does not strand players
 //     in a group the gender or balance rules cannot seat together,
-//  3. how hard the picked players are to seat (those with the fewest
+//  3. gender composition: 3-1 lineups only when no 4-0 or 2-2 ties,
+//     unless the odd player has already been skipped once,
+//  4. how hard the picked players are to seat (those with the fewest
 //     valid lineups go first, while a lineup for them is available),
-//  4. gender composition (3-1 lineups only when no 4-0 or 2-2 ties),
 //  5. consecutive rest (longer rest first),
 //  6. players who came together (more same-group pairs on the court,
 //     then on one team),
@@ -164,11 +165,11 @@ func (o *option) better(b *option) bool {
 	if c := compareInts(o.future, b.future); c != 0 {
 		return c < 0
 	}
-	if c := compareInts(o.scarcity[:], b.scarcity[:]); c != 0 {
-		return c < 0
-	}
 	if o.oddGender != b.oddGender {
 		return !o.oddGender
+	}
+	if c := compareInts(o.scarcity[:], b.scarcity[:]); c != 0 {
+		return c < 0
 	}
 	for i := range o.rests {
 		if o.rests[i] != b.rests[i] {
@@ -230,7 +231,7 @@ func bestInWindow(sorted []Candidate, end int, rules domain.MatchRules, useLooka
 						continue
 					}
 					o.lineup = lineup
-					o.oddGender = countMen(&four[0], &four[1], &four[2], &four[3])%2 == 1
+					o.oddGender = oddOneOutFresh(four)
 					o.grouped = groupedPairs(four)
 					ties = append(ties, o)
 				}
@@ -631,6 +632,26 @@ func contains(ids []int64, id int64) bool {
 	for _, v := range ids {
 		if v == id {
 			return true
+		}
+	}
+	return false
+}
+
+// oddOneOutFresh reports a 3-1 lineup worth avoiding. Once the odd player
+// has been skipped, seating them wins: otherwise a lone woman (or man)
+// can sit out repeatedly and break the one-match fairness gap.
+func oddOneOutFresh(four [4]Candidate) bool {
+	men := countMen(&four[0], &four[1], &four[2], &four[3])
+	if men%2 == 0 {
+		return false
+	}
+	odd := domain.GenderMale
+	if men == 3 {
+		odd = domain.GenderFemale
+	}
+	for i := range four {
+		if four[i].Gender == odd {
+			return four[i].ConsecutiveRest == 0
 		}
 	}
 	return false

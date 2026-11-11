@@ -215,6 +215,7 @@ Ghi chú hiện thực: so sánh `3 × level_lẻ` với `tổng level 3 ngườ
 
 - Trận 3 nam 1 nữ hoặc 3 nữ 1 nam chỉ được đề xuất khi trong số người đang đến lượt (cùng mức công bằng) không còn đội hình 4 nam, 4 nữ hoặc 2 nam 2 nữ nào hợp lệ.
 - Không gọi thêm người có số trận cao hơn chỉ để tránh trận 3-1: công bằng số trận vẫn đứng trên.
+- Ngoại lệ: nếu người lẻ giới đã bị bỏ qua ít nhất 1 lượt (`consecutive_rest ≥ 1`) thì được xếp vào trận 3-1 kể cả khi còn phương án khác, để không ai phải ngồi chờ mãi. Ví dụ: sân 1 đang đề xuất 4 nữ, chỉ còn 1 nữ rảnh giữa 7 nam thì sân 2 ghép 4 nam, bạn nữ đó chờ một lượt.
 
 ### 6.7 Nhóm đi chung
 
@@ -228,8 +229,8 @@ Trong cửa sổ ứng viên (5.4), các tổ hợp hợp lệ được xếp th
 
 1. Số trận ưu tiên, giữ tối đa người ở mức `min`.
 2. Nhìn trước: không để những người ít trận còn lại rơi vào nhóm không xếp được với nhau; các trận kế tiếp đạt số trận ưu tiên thấp nhất.
-3. Ưu tiên người khó xếp (ít đội hình hợp lệ).
-4. Tránh trận 3-1 (6.6). Đứng sau bước 3 vì nếu đứng trước, mô phỏng 1 sân 7 người có buổi lệch 2 trận.
+3. Tránh trận 3-1 (6.6), trừ khi người lẻ giới đã bị bỏ qua 1 lượt. Ngoại lệ này cần để mô phỏng 1 sân 7 người không có buổi lệch 2 trận.
+4. Ưu tiên người khó xếp (ít đội hình hợp lệ).
 5. `consecutive_rest` lớn hơn.
 6. Nhiều người cùng nhóm hơn (6.7): số cặp cùng nhóm trong sân, rồi số cặp cùng nhóm đứng chung đội.
 7. Chênh lệch level nhỏ hơn.
@@ -303,6 +304,7 @@ Mô phỏng: Fable viết chương trình mô phỏng với danh sách người 
 - 2026-11-11: Host sửa phí tháng của Trang thành 667.000 (trước là 666.000). Thêm hai khoản chi "Chi phí ban đầu của sân" cho Trí và Trang (mục 12).
 - 2026-11-11: Thêm chi phí ban đầu tiền sân 1.400.000 và tiền cầu 630.000 (mục 12).
 - 2026-11-11: Thêm nhóm đi chung (gán theo buổi, tối đa 4 người) và hạn chế trận 3-1 (mục 6.6 đến 6.8). Host chọn: hạn chế chờ hơn là giữ nhóm.
+- 2026-11-11: Tránh 3-1 đưa lên trên "người khó xếp", kèm ngoại lệ người lẻ giới đã bị bỏ qua 1 lượt (host duyệt sau khi thấy đề xuất 3 nam 1 nữ trong khi còn đủ 4 nam).
 
 ## 11. Câu hỏi còn mở
 
