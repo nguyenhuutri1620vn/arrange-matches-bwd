@@ -84,9 +84,10 @@ const (
 //     unless the odd player has already been skipped once,
 //  4. how hard the picked players are to seat (those with the fewest
 //     valid lineups go first, while a lineup for them is available),
-//  5. consecutive rest (longer rest first),
-//  6. players who came together (more same-group pairs on the court,
-//     then on one team),
+//  5. players who came together (more same-group pairs on the court,
+//     then on one team); above rest so a group is not split just because
+//     one of them rested a turn longer,
+//  6. consecutive rest (longer rest first),
 //  7. team level difference (smaller first),
 //  8. repeated teammates/opponents (fewer first),
 //  9. queue order.
@@ -171,16 +172,16 @@ func (o *option) better(b *option) bool {
 	if c := compareInts(o.scarcity[:], b.scarcity[:]); c != 0 {
 		return c < 0
 	}
-	for i := range o.rests {
-		if o.rests[i] != b.rests[i] {
-			return o.rests[i] > b.rests[i]
-		}
-	}
 	if o.grouped != b.grouped {
 		return o.grouped > b.grouped
 	}
 	if o.lineup.GroupedTeams != b.lineup.GroupedTeams {
 		return o.lineup.GroupedTeams > b.lineup.GroupedTeams
+	}
+	for i := range o.rests {
+		if o.rests[i] != b.rests[i] {
+			return o.rests[i] > b.rests[i]
+		}
 	}
 	if o.lineup.Diff != b.lineup.Diff {
 		return o.lineup.Diff < b.lineup.Diff

@@ -220,7 +220,7 @@ Ghi chú hiện thực: so sánh `3 × level_lẻ` với `tổng level 3 ngườ
 ### 6.7 Nhóm đi chung
 
 - Người cùng nhóm (5.1) được ưu tiên vào chung sân, và khi chia đội thì ưu tiên đứng chung đội (vẫn phải trong ngưỡng cân bằng 6.2).
-- Ưu tiên này đứng sau công bằng số trận và sau `consecutive_rest`: không ai phải chờ thêm để nhóm được đi chung. Khi số trận trong nhóm lệch nhau, nhóm sẽ tự tách ra đánh với người khác.
+- Ưu tiên này đứng sau công bằng số trận, tránh 3-1 và người khó xếp, nhưng trên `consecutive_rest`: nhóm không bị tách chỉ vì một người nghỉ lâu hơn một lượt. Không ai bị gọi thêm trận ngoài mức `min` để nhóm được đi chung; khi số trận trong nhóm lệch nhau, nhóm tự tách ra đánh với người khác.
 - Hai người cùng nhóm không bị tính là "trùng lặp" (6.5) khi chơi chung lại.
 
 ### 6.8 Thứ tự xếp hạng đề xuất
@@ -231,8 +231,8 @@ Trong cửa sổ ứng viên (5.4), các tổ hợp hợp lệ được xếp th
 2. Nhìn trước: không để những người ít trận còn lại rơi vào nhóm không xếp được với nhau; các trận kế tiếp đạt số trận ưu tiên thấp nhất.
 3. Tránh trận 3-1 (6.6), trừ khi người lẻ giới đã bị bỏ qua 1 lượt. Ngoại lệ này cần để mô phỏng 1 sân 7 người không có buổi lệch 2 trận.
 4. Ưu tiên người khó xếp (ít đội hình hợp lệ).
-5. `consecutive_rest` lớn hơn.
-6. Nhiều người cùng nhóm hơn (6.7): số cặp cùng nhóm trong sân, rồi số cặp cùng nhóm đứng chung đội.
+5. Nhiều người cùng nhóm hơn (6.7): số cặp cùng nhóm trong sân, rồi số cặp cùng nhóm đứng chung đội. Đặt ngay sau tránh 3-1 (trên người khó xếp) thì mô phỏng có nhóm trượt ở 1 sân 7-8 người.
+6. `consecutive_rest` lớn hơn.
 7. Chênh lệch level nhỏ hơn.
 8. Ít trùng lặp hơn (6.5).
 9. `queued_at` sớm hơn.
@@ -304,6 +304,7 @@ Mô phỏng: Fable viết chương trình mô phỏng với danh sách người 
 - 2026-11-11: Host sửa phí tháng của Trang thành 667.000 (trước là 666.000). Thêm hai khoản chi "Chi phí ban đầu của sân" cho Trí và Trang (mục 12).
 - 2026-11-11: Thêm chi phí ban đầu tiền sân 1.400.000 và tiền cầu 630.000 (mục 12).
 - 2026-11-11: Thêm nhóm đi chung (gán theo buổi, tối đa 4 người) và hạn chế trận 3-1 (mục 6.6 đến 6.8). Host chọn: hạn chế chờ hơn là giữ nhóm.
+- 2026-11-11: Host chọn đưa "chung nhóm" lên trên `consecutive_rest`, ngay sau "người khó xếp" (mục 6.8).
 - 2026-11-11: Tránh 3-1 đưa lên trên "người khó xếp", kèm ngoại lệ người lẻ giới đã bị bỏ qua 1 lượt (host duyệt sau khi thấy đề xuất 3 nam 1 nữ trong khi còn đủ 4 nam).
 
 ## 11. Câu hỏi còn mở

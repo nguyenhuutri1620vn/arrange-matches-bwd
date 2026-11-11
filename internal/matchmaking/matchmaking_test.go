@@ -412,3 +412,22 @@ func TestProposeLoneWomanWaitsForMixedLineup(t *testing.T) {
 		t.Fatalf("want an all-men lineup, got %+v", l)
 	}
 }
+
+func TestProposeGroupBeatsConsecutiveRest(t *testing.T) {
+	var cands []Candidate
+	for id := int64(1); id <= 6; id++ {
+		cands = append(cands, cand(id, M, "TB"))
+	}
+	// 1-4 rested longer, but 1 came with 5, who did not.
+	for i := 0; i < 4; i++ {
+		cands[i].ConsecutiveRest = 1
+	}
+	cands[0].Group, cands[4].Group = 1, 1
+	l, err := Propose(cands, rules)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !teammates(l, 1, 5) {
+		t.Fatalf("want 1 and 5 together, got %+v", l)
+	}
+}

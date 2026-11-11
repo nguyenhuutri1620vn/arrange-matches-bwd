@@ -163,7 +163,7 @@ go run ./simulation -courts 2 -players 16 -runs 1000   # một cấu hình
 go run ./simulation -matrix -runs 1000                 # 1-3 sân, 7 đến 8 người mỗi sân
 ```
 
-Thêm `-v` để in từng buổi không đạt, `-file` để dùng danh sách người chơi khác. Buổi mà quy tắc giới tính/cân bằng khiến không thể công bằng (ví dụ có người không xếp được vào đội hình hợp lệ nào) được đếm riêng, không tính là lỗi.
+Thêm `-v` để in từng buổi không đạt, `-file` để dùng danh sách người chơi khác, `-groups N` để ghép ngẫu nhiên N cặp đi chung (thay đổi ưu tiên nhóm phải đạt cả với `-groups 2` đến `4`). Buổi mà quy tắc giới tính/cân bằng khiến không thể công bằng (ví dụ có người không xếp được vào đội hình hợp lệ nào) được đếm riêng, không tính là lỗi.
 
 ### 7.3 Lệnh thường dùng
 
