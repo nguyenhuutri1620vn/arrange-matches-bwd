@@ -431,3 +431,72 @@ func TestProposeGroupBeatsConsecutiveRest(t *testing.T) {
 		t.Fatalf("want 1 and 5 together, got %+v", l)
 	}
 }
+
+// eightAfterTwoMatches is one court of eight equal players after 1-4 and
+// then 5-8 played: everyone has one match, 1-4 rested once.
+func eightAfterTwoMatches() []Candidate {
+	var cands []Candidate
+	for id := int64(1); id <= 8; id++ {
+		c := cand(id, M, "TB")
+		c.PriorityCount = 1
+		base := int64(1)
+		if id > 4 {
+			base = 5
+		}
+		for o := base; o < base+4; o++ {
+			if o != id {
+				c.RecentOpponents = append(c.RecentOpponents, o)
+			}
+		}
+		if id <= 4 {
+			c.ConsecutiveRest = 1
+		}
+		cands = append(cands, c)
+	}
+	return cands
+}
+
+func TestProposeMixesFoursomesAboveRest(t *testing.T) {
+	l, err := Propose(eightAfterTwoMatches(), rules)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := 0
+	for _, id := range ids(l) {
+		if id <= 4 {
+			first++
+		}
+	}
+	if first != 2 {
+		t.Fatalf("want two from each foursome, got %+v", l)
+	}
+}
+
+func TestProposeOverdueBeatsMixing(t *testing.T) {
+	cands := eightAfterTwoMatches()
+	for i := 0; i < 4; i++ {
+		cands[i].ConsecutiveRest = overdueRest
+	}
+	l, err := Propose(cands, rules)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sameIDs(ids(l), []int64{1, 2, 3, 4}) {
+		t.Fatalf("players who sat out %d matches should play, got %+v", overdueRest, l)
+	}
+}
+
+func TestArrangeRotatesPartnersWithinBalance(t *testing.T) {
+	// 1+4 vs 2+3 is perfectly even but 1 and 4 just partnered; 1+2 vs 3+4
+	// is off by 2, still within the threshold.
+	four := [4]Candidate{cand(1, M, "TB"), cand(2, M, "TB-"), cand(3, M, "TB-"), cand(4, M, "TBY")}
+	four[0].RecentTeammates = []int64{4}
+	four[3].RecentTeammates = []int64{1}
+	l, err := Arrange(four, rules)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if teammates(l, 1, 4) || l.Repeats != 0 || !l.Balanced {
+		t.Fatalf("want new partners within balance, got %+v", l)
+	}
+}

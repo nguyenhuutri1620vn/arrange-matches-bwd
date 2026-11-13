@@ -651,3 +651,24 @@ func TestSetPlayerGroupLimits(t *testing.T) {
 		t.Fatal("group 0 should clear it")
 	}
 }
+
+func TestSeedRaisesOldDefaultRepeatLookback(t *testing.T) {
+	for _, tc := range []struct{ saved, want int }{{1, 3}, {2, 2}} {
+		f := newFixture(t)
+		s := domain.DefaultSettings()
+		s.Rules.RepeatLookback = tc.saved
+		if err := f.svc.UpdateSettings(f.ctx, s); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.store.Seed(f.ctx); err != nil {
+			t.Fatal(err)
+		}
+		got, err := f.svc.Settings(f.ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Rules.RepeatLookback != tc.want {
+			t.Fatalf("saved %d: lookback = %d, want %d", tc.saved, got.Rules.RepeatLookback, tc.want)
+		}
+	}
+}

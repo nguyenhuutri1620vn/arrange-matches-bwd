@@ -82,7 +82,7 @@ Mục tiêu: chênh lệch số trận giữa người nhiều nhất và ít nh
 
 ### 4.5 Trùng lặp đồng đội và đối thủ
 
-Tránh ghép lại cùng đồng đội hoặc đối thủ mà người đó đã gặp trong 1 trận gần nhất (cấu hình được, chỉ trong buổi). Ưu tiên thấp nhất, chỉ dùng để chọn giữa các phương án đã ngang nhau về công bằng và cân bằng level.
+Tránh ghép lại cùng đồng đội hoặc đối thủ mà người đó đã gặp trong 3 trận gần nhất (cấu hình được, chỉ trong buổi). Khi chọn 4 người, ưu tiên ít cặp vừa chung sân (trộn người), nhưng người đã ngồi ngoài từ 2 trận liền được ưu tiên trước. Khi chia đội, trong các cách chia cân bằng, ưu tiên đổi đồng đội trước chênh lệch nhỏ nhất. Không bao giờ vượt công bằng số trận, giới tính hay ngưỡng cân bằng; thứ tự đầy đủ ở mục 6.8 của `docs/raw_requirement.md`.
 
 ### 4.6 Vòng đời trạng thái
 

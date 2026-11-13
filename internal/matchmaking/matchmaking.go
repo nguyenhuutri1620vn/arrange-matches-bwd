@@ -68,6 +68,8 @@ const (
 	lookaheadDepth      = 2
 	// noLineup scores a looked-ahead match that could not be formed.
 	noLineup = 1 << 30
+	// overdueRest is the sit-out streak that outranks mixing players up.
+	overdueRest = 2
 )
 
 // Propose selects the best valid lineup from the queue.
@@ -87,10 +89,13 @@ const (
 //  5. players who came together (more same-group pairs on the court,
 //     then on one team); above rest so a group is not split just because
 //     one of them rested a turn longer,
-//  6. consecutive rest (longer rest first),
-//  7. team level difference (smaller first),
-//  8. repeated teammates/opponents (fewer first),
-//  9. queue order.
+//  6. players overdue for a match (sat out overdueRest matches or more),
+//  7. mixing: fewer pairs who shared a court in their recent matches, so
+//     a full court does not keep splitting into the same two foursomes,
+//  8. consecutive rest (longer rest first),
+//  9. team level difference (smaller first),
+//  10. repeated teammates/opponents (fewer first),
+//  11. queue order.
 //
 // Gender rules and the balance threshold are hard constraints. It returns
 // domain.ErrNotEnoughPlayers or domain.ErrNoValidLineup when nothing fits.
@@ -154,6 +159,10 @@ type option struct {
 	oddGender bool
 	// grouped counts pairs among the four that share a group.
 	grouped int
+	// overdue counts picked players who sat out overdueRest matches or more.
+	overdue int
+	// courtMates counts pairs among the four who shared a recent court.
+	courtMates int
 	// scarcity lists, hardest to seat first, how many valid lineups each
 	// picked player could join.
 	scarcity [4]int
@@ -177,6 +186,12 @@ func (o *option) better(b *option) bool {
 	}
 	if o.lineup.GroupedTeams != b.lineup.GroupedTeams {
 		return o.lineup.GroupedTeams > b.lineup.GroupedTeams
+	}
+	if o.overdue != b.overdue {
+		return o.overdue > b.overdue
+	}
+	if o.courtMates != b.courtMates {
+		return o.courtMates < b.courtMates
 	}
 	for i := range o.rests {
 		if o.rests[i] != b.rests[i] {
@@ -234,6 +249,12 @@ func bestInWindow(sorted []Candidate, end int, rules domain.MatchRules, useLooka
 					o.lineup = lineup
 					o.oddGender = oddOneOutFresh(four)
 					o.grouped = groupedPairs(four)
+					o.courtMates = courtMatePairs(four)
+					for i := range four {
+						if four[i].ConsecutiveRest >= overdueRest {
+							o.overdue++
+						}
+					}
 					ties = append(ties, o)
 				}
 			}
@@ -476,7 +497,7 @@ func (la *lookahead) bestCounts(w []slot, firstOnly bool) [][4]int {
 
 // Arrange splits four given players into the best gender-valid teams:
 // balanced first, then (among balanced splits) more same-group teams, then
-// smallest level difference, then fewest repeats. The balance threshold is
+// fewest repeats so partners rotate, then smallest level difference. The balance threshold is
 // reported through Lineup.Balanced, not enforced, so the host can override
 // it. It returns domain.ErrInvalidGenderLineup when no split is allowed.
 func Arrange(four [4]Candidate, rules domain.MatchRules) (Lineup, error) {
@@ -508,6 +529,9 @@ func splitBetter(l, b *Lineup) bool {
 	// level difference alone.
 	if l.Balanced && l.GroupedTeams != b.GroupedTeams {
 		return l.GroupedTeams > b.GroupedTeams
+	}
+	if l.Balanced && l.Repeats != b.Repeats {
+		return l.Repeats < b.Repeats
 	}
 	if l.Diff != b.Diff {
 		return l.Diff < b.Diff
@@ -656,4 +680,22 @@ func oddOneOutFresh(four [4]Candidate) bool {
 		}
 	}
 	return false
+}
+
+// courtMatePairs skips same-group pairs: they are meant to share courts.
+func courtMatePairs(four [4]Candidate) int {
+	n := 0
+	for i := 0; i < 4; i++ {
+		for j := i + 1; j < 4; j++ {
+			a, b := &four[i], &four[j]
+			if sameGroup(a, b) {
+				continue
+			}
+			if contains(a.RecentTeammates, b.ID) || contains(a.RecentOpponents, b.ID) ||
+				contains(b.RecentTeammates, a.ID) || contains(b.RecentOpponents, a.ID) {
+				n++
+			}
+		}
+	}
+	return n
 }

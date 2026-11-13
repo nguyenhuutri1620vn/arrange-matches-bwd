@@ -207,9 +207,12 @@ Ghi chú hiện thực: so sánh `3 × level_lẻ` với `tổng level 3 ngườ
 
 ### 6.5 Hạn chế trùng lặp
 
-- "Trùng lặp" nghĩa là ghép lại cùng một cặp đồng đội, hoặc gặp lại cùng đối thủ, mà người đó vừa có trong **1 trận gần nhất** của mình (cấu hình được). Chỉ xét trong buổi hiện tại.
+- "Trùng lặp" nghĩa là ghép lại cùng một cặp đồng đội, hoặc gặp lại cùng đối thủ, mà người đó vừa có trong **3 trận gần nhất** của mình (cấu hình được, trước 2026-11-13 là 1). Chỉ xét trong buổi hiện tại.
+- **Trộn người giữa các trận:** khi chọn 4 người, ưu tiên phương án có ít cặp vừa chung sân (đồng đội hoặc đối thủ trong các trận xét trùng lặp). Không có quy tắc này thì 8 người 1 sân chia thành 2 nhóm 4 người cố định thay phiên nhau, chỉ đổi cách chia cặp.
+- **Không nghỉ quá lâu:** người đã ngồi ngoài từ 2 trận liền trở lên (`consecutive_rest ≥ 2`) được ưu tiên trước quy tắc trộn người.
+- **Đổi đồng đội:** khi chia đội, trong các cách chia cân bằng (lệch ≤ ngưỡng 6.2), ưu tiên ít trùng lặp hơn trước rồi mới đến chênh lệch nhỏ nhất.
 - Ví dụ: An vừa cặp với Bình. Nếu trận kế tiếp có hai phương án ngang nhau về số trận và level, app chọn phương án An không cặp lại với Bình.
-- Đây là ưu tiên thấp nhất: chỉ dùng để chọn giữa các phương án đã ngang nhau về công bằng số trận và cân bằng level.
+- Trộn người và đổi đồng đội không bao giờ vượt công bằng số trận, quy tắc giới tính hay ngưỡng cân bằng (xem thứ tự ở 6.8).
 
 ### 6.6 Hạn chế đánh lệch giới (3-1)
 
@@ -232,12 +235,14 @@ Trong cửa sổ ứng viên (5.4), các tổ hợp hợp lệ được xếp th
 3. Tránh trận 3-1 (6.6), trừ khi người lẻ giới đã bị bỏ qua 1 lượt. Ngoại lệ này cần để mô phỏng 1 sân 7 người không có buổi lệch 2 trận.
 4. Ưu tiên người khó xếp (ít đội hình hợp lệ).
 5. Nhiều người cùng nhóm hơn (6.7): số cặp cùng nhóm trong sân, rồi số cặp cùng nhóm đứng chung đội. Đặt ngay sau tránh 3-1 (trên người khó xếp) thì mô phỏng có nhóm trượt ở 1 sân 7-8 người.
-6. `consecutive_rest` lớn hơn.
-7. Chênh lệch level nhỏ hơn.
-8. Ít trùng lặp hơn (6.5).
-9. `queued_at` sớm hơn.
+6. Nhiều người đã ngồi ngoài từ 2 trận liền hơn (6.5).
+7. Ít cặp vừa chung sân hơn (trộn người, 6.5). Người cùng nhóm không tính.
+8. `consecutive_rest` lớn hơn.
+9. Chênh lệch level nhỏ hơn.
+10. Ít trùng lặp hơn (6.5).
+11. `queued_at` sớm hơn.
 
-Khi chia 4 người thành 2 đội: trong các cách chia cân bằng, chọn cách có nhiều cặp cùng nhóm đứng chung đội nhất, rồi chênh lệch nhỏ nhất, rồi ít trùng lặp nhất.
+Khi chia 4 người thành 2 đội: trong các cách chia cân bằng, chọn cách có nhiều cặp cùng nhóm đứng chung đội nhất, rồi ít trùng lặp nhất, rồi chênh lệch nhỏ nhất.
 
 ## 7. Yêu cầu phi chức năng
 
@@ -292,7 +297,7 @@ Mô phỏng: Fable viết chương trình mô phỏng với danh sách người 
 - Có đăng nhập một tài khoản admin.
 - Polling 3 giây, không offline, không đồng hồ trận.
 - ID số nguyên, chưa có `tenant_id`.
-- Tránh trùng lặp: xét 1 trận gần nhất.
+- Tránh trùng lặp: xét 1 trận gần nhất (đổi thành 3 ngày 2026-11-13).
 - Trận đang đánh khi kết thúc buổi: được tính trận.
 - Phí tháng người cố định: host tự nhập, tách riêng với thu vãng lai trong báo cáo.
 - Báo cáo drill-down: tổng → tháng → buổi → người chơi.
@@ -303,6 +308,7 @@ Mô phỏng: Fable viết chương trình mô phỏng với danh sách người 
 - Giá thuê sân (`court_fee`): host tự nhập sau trong phần cấu hình; mặc định 0. Đây là khoản chi.
 - 2026-11-11: Host sửa phí tháng của Trang thành 667.000 (trước là 666.000). Thêm hai khoản chi "Chi phí ban đầu của sân" cho Trí và Trang (mục 12).
 - 2026-11-11: Thêm chi phí ban đầu tiền sân 1.400.000 và tiền cầu 630.000 (mục 12).
+- 2026-11-13: Trộn người giữa các trận, ưu tiên đổi đồng đội khi vẫn cân bằng, và xét trùng lặp 3 trận gần nhất (mục 6.5, 6.8). Lý do: 8 người 1 sân cứ chia 2 nhóm 4 người cố định.
 - 2026-11-13: Host thống kê lại vốn và chi (mục 12): vốn 2.030.000 (Trí 1.353.000, Trang 677.000), bỏ hai khoản chi trùng, thêm 315.000 tiền cầu ngày 12/11, buổi 11/11 có 5 vãng lai chưa thu.
 - 2026-11-11: Thêm nhóm đi chung (gán theo buổi, tối đa 4 người) và hạn chế trận 3-1 (mục 6.6 đến 6.8). Host chọn: hạn chế chờ hơn là giữ nhóm.
 - 2026-11-11: Host chọn đưa "chung nhóm" lên trên `consecutive_rest`, ngay sau "người khó xếp" (mục 6.8).
@@ -313,7 +319,7 @@ Mô phỏng: Fable viết chương trình mô phỏng với danh sách người 
 Các điểm dưới đây phát sinh khi dựng bản đầu tiên (2026-11-11). Mỗi điểm đang chạy theo **giả định tạm**; host xác nhận hoặc đổi.
 
 1. **Thứ tự xếp hạng đề xuất.** Đã chốt 2026-11-11, xem 6.8. Bước nhìn trước và người khó xếp không có trong mục 6.4 nhưng cần để mô phỏng đạt chênh lệch ≤ 1. Tối đa 16 người đầu hàng chờ (theo thứ tự ưu tiên) được xét cho một đề xuất.
-2. **Nhóm 4 người lặp lại.** Với 8 người 1 sân và mọi người cùng level/giới tính, ưu tiên `consecutive_rest` khiến hai nhóm 4 người luân phiên cố định (chỉ đổi cách chia cặp). Giả định tạm: giữ đúng thứ tự ưu tiên của mục 6.4. Nếu host muốn trộn người nhiều hơn thì cần hạ ưu tiên của `consecutive_rest` xuống dưới "tránh trùng lặp".
+2. **Nhóm 4 người lặp lại.** Đã chốt 2026-11-13: host muốn trộn người, xem quy tắc trộn người và không nghỉ quá lâu ở 6.5.
 3. **Khi nào app tự đề xuất.** Giả định tạm: tự đề xuất cho sân vừa kết thúc trận; các trường hợp khác host bấm "Đề xuất trận" trên sân trống. Lý do: nếu tự đề xuất mọi lúc thì đề xuất vừa bị bỏ sẽ hiện lại ngay.
 4. **Đổi người trong đề xuất.** Giả định tạm: sau khi đổi, app chia lại hai đội cho 4 người mới (hợp lệ giới tính, lệch level nhỏ nhất) thay vì giữ nguyên vị trí người bị thay.
 5. **Cho người đang được giữ chỗ đi nghỉ.** Giả định tạm: đề xuất chứa người đó bị xóa.

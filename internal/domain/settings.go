@@ -36,7 +36,7 @@ func DefaultSettings() Settings {
 		Rules: MatchRules{
 			GenderGapThreshold: 2,
 			BalanceThreshold:   2,
-			RepeatLookback:     1,
+			RepeatLookback:     3,
 		},
 	}
 }

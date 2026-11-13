@@ -15,6 +15,7 @@ const (
 	setupExpensesSeed   = "initial_2026_11_setup_expenses"
 	recountSeed         = "recount_2026_11_13"
 	session20261111Seed = "recount_2026_11_13_session_2026_11_11"
+	repeatLookbackSeed  = "repeat_lookback_3"
 )
 
 // Seed loads the host's historical data (docs/raw_requirement.md section
@@ -32,7 +33,23 @@ func (s *Store) Seed(ctx context.Context) error {
 	if err := s.InTx(ctx, func(q *Queries) error { return seedRecount(ctx, q) }); err != nil {
 		return err
 	}
-	return s.InTx(ctx, func(q *Queries) error { return seedSession20261111(ctx, q) })
+	if err := s.InTx(ctx, func(q *Queries) error { return seedSession20261111(ctx, q) }); err != nil {
+		return err
+	}
+	return s.InTx(ctx, func(q *Queries) error { return seedRepeatLookback(ctx, q) })
+}
+
+// seedRepeatLookback moves a saved repeat lookback still at the old default
+// of 1 to the new default; a value the host chose stays.
+func seedRepeatLookback(ctx context.Context, q *Queries) error {
+	if done, err := q.DataLoadApplied(ctx, repeatLookbackSeed); err != nil || done {
+		return err
+	}
+	if _, err := q.db.ExecContext(ctx, `UPDATE settings SET value = ? WHERE key = ? AND value = 1`,
+		domain.DefaultSettings().Rules.RepeatLookback, settingKeys.repeatLookback); err != nil {
+		return err
+	}
+	return q.MarkDataLoadApplied(ctx, repeatLookbackSeed, time.Now())
 }
 
 // seedRecount applies the host's recount of 2026-11-13: the 2.030.000
