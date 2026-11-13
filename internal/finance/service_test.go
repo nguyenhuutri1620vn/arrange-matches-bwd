@@ -37,20 +37,28 @@ func TestSeedReportNovember2026(t *testing.T) {
 	if len(r.RegularPayments) != 3 {
 		t.Fatalf("regular payments = %d, want 3 (Huyền's 0 included)", len(r.RegularPayments))
 	}
-	if r.RegularIncome != 1333000+667000 {
-		t.Fatalf("regular income = %d", r.RegularIncome)
+	if r.RegularIncome != 1353000+677000 {
+		t.Fatalf("regular income = %d, want the 2.030.000 capital", r.RegularIncome)
 	}
 	if r.CasualIncome != 315000+790000 {
 		t.Fatalf("casual income = %d", r.CasualIncome)
 	}
-	if len(r.Sessions) != 2 || r.SessionCount != 2 {
-		t.Fatalf("sessions = %d, want 2", len(r.Sessions))
+	if len(r.Sessions) != 3 || r.SessionCount != 3 {
+		t.Fatalf("sessions = %d, want 3", len(r.Sessions))
 	}
-	if r.Expense != 220000+1333000+667000+1400000+630000 {
-		t.Fatalf("expense = %d, want 3650000", r.Expense)
+	// Court 1.400.000 + shuttles 630.000 + 315.000, plus 9/11 court rent.
+	if r.Expense != 1400000+630000+315000+220000 {
+		t.Fatalf("expense = %d, want 2565000", r.Expense)
 	}
 	if r.Sessions[0].Expense != 0 || r.Sessions[1].Expense != 220000 || r.Sessions[0].PlayerCount != 0 {
 		t.Fatalf("session rows: %+v", r.Sessions)
+	}
+	s11 := r.Sessions[2]
+	if s11.Session.Date != "2026-11-11" || s11.Male != 4 || s11.Female != 1 || s11.Casual != 5 || s11.Expense != 0 {
+		t.Fatalf("11/11 row: %+v", s11)
+	}
+	if s11.Fees.Expected != 4*70000+60000 || s11.Fees.Collected != 0 || s11.FeeIncome != 0 {
+		t.Fatalf("11/11 fees: %+v income %d", s11.Fees, s11.FeeIncome)
 	}
 	assertMonthAddsUp(t, r)
 

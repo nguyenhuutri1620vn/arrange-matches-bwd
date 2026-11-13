@@ -277,7 +277,7 @@ Cấu hình mặc định toàn app (dùng để điền sẵn khi tạo buổi)
 7. Dữ liệu không mất sau khi tải lại trang.
 8. Chưa đăng nhập thì không gọi được API nào ngoài đăng nhập.
 9. Báo cáo drill-down: tổng của mỗi cấp bằng tổng các mục con của nó; thu cố định và thu vãng lai trong tháng cộng với thu khác bằng tổng thu tháng.
-10. Sau khi chạy dữ liệu khởi tạo (mục 12), báo cáo tháng 11/2026 hiện đúng 3 người cố định và 2 buổi cũ.
+10. Sau khi chạy dữ liệu khởi tạo (mục 12), báo cáo tháng 11/2026 hiện đúng 3 người cố định, 3 buổi (4/11, 9/11, 11/11) và các tổng thu chi ở cuối mục 12.
 
 Mô phỏng: Fable viết chương trình mô phỏng với danh sách người chơi giả lập để kiểm tra thuật toán. Host sẽ tự nhập danh sách thật và tự mô phỏng lại khi app hoàn thành.
 
@@ -303,6 +303,7 @@ Mô phỏng: Fable viết chương trình mô phỏng với danh sách người 
 - Giá thuê sân (`court_fee`): host tự nhập sau trong phần cấu hình; mặc định 0. Đây là khoản chi.
 - 2026-11-11: Host sửa phí tháng của Trang thành 667.000 (trước là 666.000). Thêm hai khoản chi "Chi phí ban đầu của sân" cho Trí và Trang (mục 12).
 - 2026-11-11: Thêm chi phí ban đầu tiền sân 1.400.000 và tiền cầu 630.000 (mục 12).
+- 2026-11-13: Host thống kê lại vốn và chi (mục 12): vốn 2.030.000 (Trí 1.353.000, Trang 677.000), bỏ hai khoản chi trùng, thêm 315.000 tiền cầu ngày 12/11, buổi 11/11 có 5 vãng lai chưa thu.
 - 2026-11-11: Thêm nhóm đi chung (gán theo buổi, tối đa 4 người) và hạn chế trận 3-1 (mục 6.6 đến 6.8). Host chọn: hạn chế chờ hơn là giữ nhóm.
 - 2026-11-11: Host chọn đưa "chung nhóm" lên trên `consecutive_rest`, ngay sau "người khó xếp" (mục 6.8).
 - 2026-11-11: Tránh 3-1 đưa lên trên "người khó xếp", kèm ngoại lệ người lẻ giới đã bị bỏ qua 1 lượt (host duyệt sau khi thấy đề xuất 3 nam 1 nữ trong khi còn đủ 4 nam).
@@ -329,8 +330,8 @@ Dữ liệu thật trong quá khứ của host, nạp một lần khi khởi t�
 
 | Tên | Giới tính | Level | Phí tháng (`monthly_fee`) |
 |---|---|---|---|
-| Trí | Nam | TB- | 1.333.000 |
-| Trang | Nữ | TB | 667.000 |
+| Trí | Nam | TB- | 1.353.000 |
+| Trang | Nữ | TB | 677.000 |
 | Huyền | Nữ | Y | 0 |
 
 Mỗi người có một giao dịch thu "Phí tháng" **đã thu**, tháng 11/2026 (ngày giao dịch 2026-11-01), gắn `player_id` với đúng số tiền trên. Huyền 0 đồng vẫn tạo để báo cáo hiện đủ người.
@@ -344,4 +345,16 @@ Mỗi người có một giao dịch thu "Phí tháng" **đã thu**, tháng 11/2
 
 Buổi cũ không tự sinh khoản chi thuê sân theo `court_fee`; chỉ dùng đúng số liệu trong bảng.
 
-**Chi phí ban đầu của sân** (đã đưa vào chi, ngày 2026-11-01, danh mục "Chi khác"): tiền của hai người cố định Trí (1.333.000) và Trang (667.000) đã dùng để trang bị sân. Hai khoản này được ghi thêm như khoản chi, không bỏ khoản thu "Phí tháng" tương ứng. Tiền sân (1.400.000, danh mục "Tiền thuê sân") và tiền cầu (630.000, danh mục "Cầu") cũng là chi phí ban đầu, ghi cùng ngày 2026-11-01. Tổng chi tháng 11/2026 tăng thêm 4.030.000.
+**Vốn ban đầu** (thống kê lại 2026-11-13): Trí và Trang góp 2.030.000 theo tỉ lệ 2/3 và 1/3, làm tròn nghìn: Trí 1.353.000, Trang 677.000 (chính là hai khoản "Phí tháng" ở trên). Toàn bộ vốn dùng cho:
+
+| Ngày | Danh mục | Số tiền | Ghi chú |
+|---|---|---|---|
+| 2026-11-01 | Tiền thuê sân | 1.400.000 | Tiền sân ban đầu |
+| 2026-11-01 | Cầu | 630.000 | 2 ống cầu |
+| 2026-11-12 | Cầu | 315.000 | Mua thêm 1 ống |
+
+Bản trước còn ghi thêm hai khoản "Chi khác" 1.333.000 và 667.000 (tiền của Trí và Trang dùng trang bị sân). Đó là ghi trùng với tiền sân và tiền cầu, nên bị xóa mềm.
+
+**Buổi 2026-11-11** (`ENDED`, không có tiền thuê sân): 5 người vãng lai, 4 nam 1 nữ, chưa ai trả phí (dự kiến 4 × 70.000 + 60.000 = 340.000). Tên tạm "VL nam 1" đến "VL nam 4" và "VL nữ 1", level TBY; host đổi tên, level trong danh bạ sau. Buổi có khoản thu "Phí buổi" tự động 0 đồng, tự cập nhật khi host đánh dấu đã thu. Buổi thử cùng ngày (không có giao dịch nào) bị thay bằng buổi này.
+
+Sau khi nạp, tháng 11/2026: thu 2.030.000 (cố định) + 1.105.000 (phí buổi) = 3.135.000; chi 2.345.000 + 220.000 = 2.565.000; còn 340.000 chưa thu ở buổi 11/11.

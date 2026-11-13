@@ -522,15 +522,84 @@ func TestSeedIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(players) != 3 {
-		t.Fatalf("players = %d, want 3", len(players))
+	// 3 regulars + the five casual players of 2026-11-11.
+	if len(players) != 8 {
+		t.Fatalf("players = %d, want 8", len(players))
 	}
 	txs, err := f.store.Q().ListTransactions(f.ctx, storage.TransactionFilter{Month: "2026-11"})
 	if err != nil {
 		t.Fatal(err)
 	}
+	// 3 monthly fees, 2 past fees, 1 rent, 3 setup expenses, 1 auto fee.
 	if len(txs) != 10 {
 		t.Fatalf("transactions = %d, want 10", len(txs))
+	}
+}
+
+// The recount rewrites a trial session held on 2026-11-11, still open or
+// already ended with court rent, into the real one; the host can then
+// mark the casual players as paid.
+func TestSeedRewritesTrialSessionOf20261111(t *testing.T) {
+	for _, ended := range []bool{false, true} {
+		f := newFixture(t)
+		f.clock = time.Date(2026, 11, 11, 11, 0, 0, 0, time.UTC)
+		rent := int64(220000)
+		state, err := f.svc.Create(f.ctx, CreateParams{CourtCount: 2, CourtFee: &rent})
+		if err != nil {
+			t.Fatal(err)
+		}
+		trialID := state.Session.ID
+		for i := 0; i < 4; i++ {
+			p := f.player("Thử "+string(rune('A'+i)), domain.GenderMale, domain.LevelTB, false)
+			state = f.must(f.svc.CheckIn(f.ctx, trialID, p.ID))
+		}
+		state = f.must(f.svc.Propose(f.ctx, state.Courts[0].ID))
+		if ended {
+			f.must(f.svc.End(f.ctx, trialID))
+		}
+		if err := f.store.Seed(f.ctx); err != nil {
+			t.Fatal(err)
+		}
+
+		sess, err := f.store.Q().GetSession(f.ctx, trialID)
+		if err != nil || sess.Status != domain.SessionEnded || sess.CourtFee != 0 {
+			t.Fatalf("ended=%v: session %+v, %v", ended, sess, err)
+		}
+		sessions, err := f.store.Q().ListSessionsInMonth(f.ctx, "2026-11")
+		if err != nil {
+			t.Fatal(err)
+		}
+		n := 0
+		for _, x := range sessions {
+			if x.Date == "2026-11-11" {
+				n++
+			}
+		}
+		if n != 1 {
+			t.Fatalf("ended=%v: %d sessions on 2026-11-11", ended, n)
+		}
+		if ms, err := f.store.Q().ListMatches(f.ctx, trialID); err != nil || len(ms) != 0 {
+			t.Fatalf("ended=%v: trial matches left: %d, %v", ended, len(ms), err)
+		}
+		txs, err := f.store.Q().ListTransactions(f.ctx, storage.TransactionFilter{Month: "2026-11"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, tx := range txs {
+			if tx.SessionID != nil && *tx.SessionID == trialID && tx.Category == domain.CatCourtRent {
+				t.Fatalf("ended=%v: court rent kept: %+v", ended, tx)
+			}
+		}
+		players, err := f.store.Q().ListSessionPlayers(f.ctx, trialID)
+		if err != nil || len(players) != 5 || players[4].Name != "VL nữ 1" {
+			t.Fatalf("ended=%v: players %+v, %v", ended, players, err)
+		}
+		paid := true
+		f.must(f.svc.SetPayment(f.ctx, players[4].ID, PaymentUpdate{IsPaid: &paid}))
+		fee, err := f.store.Q().GetAutoSessionFee(f.ctx, trialID)
+		if err != nil || fee.Amount != 60000 {
+			t.Fatalf("ended=%v: auto fee %+v, %v; want 60000", ended, fee, err)
+		}
 	}
 }
 
