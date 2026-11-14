@@ -67,6 +67,7 @@ export interface SessionPlayer {
   fee_override: number | null
   is_paid: boolean
   held: boolean
+  waitingForGroup: boolean
   queue_position: number
   /** Players who came together share a group number; 0 means none. */
   group: number

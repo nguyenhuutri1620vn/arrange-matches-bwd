@@ -43,6 +43,9 @@ type PlayerView struct {
 	Fee int64
 	// Held means the player is reserved by a proposal (DRAFT).
 	Held bool
+	// WaitingForGroup means a group mate is on court, so the player is
+	// not proposed until they come back.
+	WaitingForGroup bool
 	// QueuePosition is the 1-based priority rank among waiting players,
 	// 0 when not waiting.
 	QueuePosition int
@@ -208,13 +211,15 @@ func loadState(ctx context.Context, q *storage.Queries, sess domain.Session) (*S
 	for i, c := range queue {
 		position[c.ID] = i + 1
 	}
+	playingGroups, _ := groupStates(players, held)
 	for i := range players {
 		p := players[i]
 		state.Players = append(state.Players, PlayerView{
-			SessionPlayer: p,
-			Fee:           p.Fee(&sess),
-			Held:          held[p.ID],
-			QueuePosition: position[p.ID],
+			SessionPlayer:   p,
+			Fee:             p.Fee(&sess),
+			Held:            held[p.ID],
+			WaitingForGroup: matchmaking.GroupsWait(sess.CourtCount) && p.Status == domain.PlayerWaiting && p.Group != 0 && playingGroups[p.Group],
+			QueuePosition:   position[p.ID],
 		})
 	}
 	return state, nil
@@ -322,4 +327,23 @@ func matchPlayers(l matchmaking.Lineup) []domain.MatchPlayer {
 		{SessionPlayerID: l.TeamB[0], Team: domain.TeamB},
 		{SessionPlayerID: l.TeamB[1], Team: domain.TeamB},
 	}
+}
+
+// groupStates lists the groups with a member on court and those with a
+// member held by a proposal.
+func groupStates(players []domain.SessionPlayer, held map[int64]bool) (playing, drafted map[int]bool) {
+	playing, drafted = map[int]bool{}, map[int]bool{}
+	for i := range players {
+		p := &players[i]
+		if p.Group == 0 {
+			continue
+		}
+		if p.Status == domain.PlayerPlaying {
+			playing[p.Group] = true
+		}
+		if held[p.ID] {
+			drafted[p.Group] = true
+		}
+	}
+	return playing, drafted
 }

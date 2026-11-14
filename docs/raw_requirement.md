@@ -222,9 +222,18 @@ Ghi chú hiện thực: so sánh `3 × level_lẻ` với `tổng level 3 ngườ
 
 ### 6.7 Nhóm đi chung
 
-- Người cùng nhóm (5.1) được ưu tiên vào chung sân, và khi chia đội thì ưu tiên đứng chung đội (vẫn phải trong ngưỡng cân bằng 6.2).
-- Ưu tiên này đứng sau công bằng số trận, tránh 3-1 và người khó xếp, nhưng trên `consecutive_rest`: nhóm không bị tách chỉ vì một người nghỉ lâu hơn một lượt. Không ai bị gọi thêm trận ngoài mức `min` để nhóm được đi chung; khi số trận trong nhóm lệch nhau, nhóm tự tách ra đánh với người khác.
-- Hai người cùng nhóm không bị tính là "trùng lặp" (6.5) khi chơi chung lại.
+Nhóm là bạn bè hoặc cặp đôi đến cùng nhau (2-4 người), host gắn theo buổi (5.1). Người đi một mình để "Không" và được coi là người ngoài. Mục tiêu: người trong nhóm thường đứng chung đội với nhau và đấu với người ngoài, đổi đồng đội trong nhóm qua các trận, và thỉnh thoảng cả nhóm đánh chung một sân.
+
+- **Đôi cùng nhóm đấu người ngoài:** ưu tiên trận có nhiều đội gồm hai người cùng nhóm. Ví dụ nhóm Thi (Thi nữ, một bạn nữ, hai bạn nam): Thi + bạn nam đấu một cặp nam-nữ khác, Thi + bạn nữ đấu một cặp nữ khác, hai bạn nam đấu một cặp nam khác.
+- **Đổi đồng đội trong nhóm:** trong các phương án ngang nhau, ưu tiên đôi cùng nhóm chưa đứng chung đội trong các trận xét trùng lặp (6.5). Khi chia đội, đồng đội cùng nhóm cũng được tính trùng lặp, nên cả nhóm cùng sân sẽ đổi cặp.
+- **Lâu lâu cả nhóm đánh chung:** trận có người cùng nhóm đối đầu nhau (ví dụ Thi + bạn nam A đấu bạn nữ + bạn nam B) chỉ được ưu tiên khi không ai trong số đó từng đối đầu người cùng nhóm trên sân này trong các trận xét trùng lặp (mặc định 3 trận). Nếu vừa đối đầu, phương án đó xếp sau phương án không có người cùng nhóm.
+- Đối thủ là người ngoài vẫn được trộn theo 6.5, nên đôi cùng nhóm gặp các cặp khác nhau qua các trận.
+- **Cả nhóm cùng vào, cùng đợi** (host chọn 2026-11-14), chỉ khi buổi mở từ 2 sân trở lên. Buổi chỉ mở 1 sân thì nhóm chỉ được ưu tiên chơi chung, không ai phải chờ (mô phỏng: 1 sân 7-8 người có tới 38% buổi lệch 2 trận vì người ngoài phải đánh bù cho nhóm). Khi có người trong nhóm đang đánh (`PLAYING`), những người cùng nhóm còn lại ngồi chờ, không được đề xuất. Hàng chờ ghi "Chờ nhóm" cho họ.
+- Khi nhóm rảnh, một đề xuất có người trong nhóm phải có đủ mọi người trong nhóm đang chờ (cả nhóm 1 sân; nhóm 2 người là một đôi). Ngoại lệ: nếu còn sân trống khác chưa có đề xuất, nhóm được tách một đôi vào sân này, những người còn lại phải vào đề xuất của sân trống kế tiếp (đề xuất đó ưu tiên lấy đủ họ nếu xếp được). Không xếp được thì họ chờ nhóm như trên.
+- Tách nhóm chỉ được giữ nếu không làm người nhiều trận hơn phải vào sân thay người ít trận hơn. App so số trận của 8 người trên sân này và sân kế tiếp, giữa phương án tách nhóm và phương án không tách. Nếu tách nhóm làm hai sân cộng lại có người nhiều trận hơn, app chọn phương án không tách. Ví dụ: hai nhóm 3 người tách thành hai đôi, hai người còn lại là nam nên sân kế tiếp chỉ nhận được nam; người nữ đi một mình (3 trận) phải ngồi ngoài trong khi người nam đi một mình đã 4 trận vào sân. Hai phương án ngang nhau thì vẫn tách.
+- Nếu giữ nhóm khiến một người ít trận nhất không còn đội hình hợp lệ nào (ví dụ người nữ đi một mình khi hai nữ còn lại là một nhóm), đề xuất đó được tách nhóm.
+- Vì nhóm cùng đợi, người có nhóm có thể lệch quá 1 trận so với người khác. Quy tắc chênh lệch ≤ 1 (6.4) chỉ bắt buộc với người không có nhóm và giữa người trong cùng nhóm. Host chấp nhận tối đa 3% buổi có nhóm (từ 2 sân) vẫn bị lệch 2 trận, chủ yếu khi nhóm 3-4 người.
+- Ưu tiên nhóm (chọn phương án nhiều đôi cùng nhóm, đổi đồng đội trong nhóm) đứng sau công bằng số trận, nhìn trước, tránh 3-1 và người khó xếp, nhưng trên người ngồi ngoài 2 trận, trộn người và người nghỉ lâu (6.8). Khi chia đội, đôi cùng nhóm vẫn phải trong ngưỡng cân bằng 6.2, và quy tắc giới tính vẫn chặn cứng (đôi nữ cùng nhóm chỉ đấu được cặp nữ).
 
 ### 6.8 Thứ tự xếp hạng đề xuất
 
@@ -234,7 +243,7 @@ Trong cửa sổ ứng viên (5.4), các tổ hợp hợp lệ được xếp th
 2. Nhìn trước: không để những người ít trận còn lại rơi vào nhóm không xếp được với nhau; các trận kế tiếp đạt số trận ưu tiên thấp nhất.
 3. Tránh trận 3-1 (6.6), trừ khi người lẻ giới đã bị bỏ qua 1 lượt. Ngoại lệ này cần để mô phỏng 1 sân 7 người không có buổi lệch 2 trận.
 4. Ưu tiên người khó xếp (ít đội hình hợp lệ).
-5. Nhiều người cùng nhóm hơn (6.7): số cặp cùng nhóm trong sân, rồi số cặp cùng nhóm đứng chung đội. Đặt ngay sau tránh 3-1 (trên người khó xếp) thì mô phỏng có nhóm trượt ở 1 sân 7-8 người.
+5. Nhóm đi chung (6.7): nhiều đội gồm đôi cùng nhóm hơn (trận cả nhóm đối đầu nhau chỉ tính khi tới lượt, chưa tới lượt thì xếp sau), rồi ít đôi cùng nhóm vừa đứng chung đội hơn.
 6. Nhiều người đã ngồi ngoài từ 2 trận liền hơn (6.5).
 7. Ít cặp vừa chung sân hơn (trộn người, 6.5). Người cùng nhóm không tính.
 8. `consecutive_rest` lớn hơn.
@@ -273,7 +282,7 @@ Cấu hình mặc định toàn app (dùng để điền sẵn khi tạo buổi)
 
 ## 9. Tiêu chí chấp nhận (Acceptance criteria)
 
-1. Với 2 sân, 16 người, trận 15 phút, 2 tiếng: mỗi người đánh số trận chênh lệch không quá 1 so với người đánh nhiều nhất.
+1. Với 2 sân, 16 người, trận 15 phút, 2 tiếng: mỗi người đánh số trận chênh lệch không quá 1 so với người đánh nhiều nhất. Có nhóm đi chung và từ 2 sân thì tiêu chí này áp dụng cho người không có nhóm, còn người trong cùng nhóm lệch nhau tối đa 1; cho phép tối đa 3% buổi không đạt (6.7).
 2. Với số người mỗi sân dao động 7 hoặc 8: ghép trận vẫn đúng quy tắc giới tính và không bao giờ có người đang `PLAYING` xuất hiện trong trận khác.
 3. Khi host bấm kết thúc trận, sân về `EMPTY` và 4 người về `WAITING` trong cùng một thao tác.
 4. Khi một người được đổi trong đề xuất, app kiểm tra lại quy tắc giới tính và chỉ cho xác nhận nếu hợp lệ; lệch level thì cảnh báo.
@@ -308,6 +317,9 @@ Mô phỏng: Fable viết chương trình mô phỏng với danh sách người 
 - Giá thuê sân (`court_fee`): host tự nhập sau trong phần cấu hình; mặc định 0. Đây là khoản chi.
 - 2026-11-11: Host sửa phí tháng của Trang thành 667.000 (trước là 666.000). Thêm hai khoản chi "Chi phí ban đầu của sân" cho Trí và Trang (mục 12).
 - 2026-11-11: Thêm chi phí ban đầu tiền sân 1.400.000 và tiền cầu 630.000 (mục 12).
+- 2026-11-14: Đổi "hạn chế chờ" thành "cả nhóm cùng vào, cùng đợi" khi mở từ 2 sân (mục 6.7): người trong nhóm chờ khi bạn cùng nhóm đang đánh. 1 sân giữ "hạn chế chờ". Quy tắc chênh lệch ≤ 1 chỉ bắt buộc với người không có nhóm. Host chấp nhận tối đa 3% buổi có nhóm vẫn lệch 2 trận (mô phỏng: 2 nhóm 4 người, 3 sân, 24 người lệch ở 1,6-2,1% buổi). Lý do: host muốn nhóm Thi được chơi chung, không bị tách.
+- 2026-11-14: Chỉ giữ cách tách nhóm khi hai sân cộng lại không đưa người nhiều trận hơn vào sân thay người ít trận hơn (mục 6.7). Lý do: mô phỏng 4 nhóm 3 người, 2 sân, 15 người lệch 2 trận ở 2,6-3,5% buổi vì người đi một mình phải đánh bù cho nhóm bị tách; sau khi sửa còn 1,0-1,9%. Host duyệt sửa thuật toán.
+- 2026-11-14: Nhóm đi chung tách thành đôi đấu người ngoài, đổi đồng đội trong nhóm, khoảng 3 trận một lần cả nhóm đánh chung (mục 6.7). Host muốn đưa nhóm lên vị trí 4 và người khó xếp xuống vị trí 7, nhưng mô phỏng trượt (1 sân 7-8 người lệch 2 trận, kể cả khi không có nhóm), nên giữ người khó xếp ở vị trí 4 và nhóm ở vị trí 5 (mục 6.8). Lý do: nhóm 4 người trước đây gần như lúc nào cũng tự đánh với nhau.
 - 2026-11-13: Trộn người giữa các trận, ưu tiên đổi đồng đội khi vẫn cân bằng, và xét trùng lặp 3 trận gần nhất (mục 6.5, 6.8). Lý do: 8 người 1 sân cứ chia 2 nhóm 4 người cố định.
 - 2026-11-13: Host thống kê lại vốn và chi (mục 12): vốn 2.030.000 (Trí 1.353.000, Trang 677.000), bỏ hai khoản chi trùng, thêm 315.000 tiền cầu ngày 12/11, buổi 11/11 có 5 vãng lai chưa thu.
 - 2026-11-11: Thêm nhóm đi chung (gán theo buổi, tối đa 4 người) và hạn chế trận 3-1 (mục 6.6 đến 6.8). Host chọn: hạn chế chờ hơn là giữ nhóm.

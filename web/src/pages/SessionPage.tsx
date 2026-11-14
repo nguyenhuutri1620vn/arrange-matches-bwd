@@ -249,6 +249,7 @@ function CourtsView({ state, busy, act }: ViewProps) {
                   <span className="queue-name">
                     {p.name}
                     {p.held && <span className="tag tag-held">Đã xếp</span>}
+                    {p.waitingForGroup && <span className="tag tag-group">Chờ nhóm</span>}
                     <GroupTag group={p.group} />
                   </span>
                   <GenderMark gender={p.gender} />

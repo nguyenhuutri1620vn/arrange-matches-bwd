@@ -80,6 +80,8 @@ Thứ tự ưu tiên khi chọn người từ hàng chờ:
 
 Mục tiêu: chênh lệch số trận giữa người nhiều nhất và ít nhất không vượt quá 1 khi đủ người và thời gian. Quy tắc giới tính luôn thắng công bằng.
 
+Nhóm đi chung (mục 6.7 của `docs/raw_requirement.md`), khi mở từ 2 sân, vào sân cùng nhau và chờ nhau: người có bạn cùng nhóm đang `PLAYING` không được đề xuất; đề xuất có người trong nhóm phải có đủ nhóm, trừ khi còn sân trống khác thì được tách một đôi. Khi đó mục tiêu ≤ 1 trận chỉ bắt buộc với người không có nhóm và giữa người trong cùng nhóm. 1 sân thì nhóm chỉ được ưu tiên, không ai chờ.
+
 ### 4.5 Trùng lặp đồng đội và đối thủ
 
 Tránh ghép lại cùng đồng đội hoặc đối thủ mà người đó đã gặp trong 3 trận gần nhất (cấu hình được, chỉ trong buổi). Khi chọn 4 người, ưu tiên ít cặp vừa chung sân (trộn người), nhưng người đã ngồi ngoài từ 2 trận liền được ưu tiên trước. Khi chia đội, trong các cách chia cân bằng, ưu tiên đổi đồng đội trước chênh lệch nhỏ nhất. Không bao giờ vượt công bằng số trận, giới tính hay ngưỡng cân bằng; thứ tự đầy đủ ở mục 6.8 của `docs/raw_requirement.md`.
@@ -154,7 +156,7 @@ Thư mục `simulation/` chứa một chương trình mô phỏng buổi chơi:
 - Trận 15 phút, buổi 2 tiếng.
 - Danh sách người chơi (giới tính, level) lấy từ danh sách thật do host cung cấp (giả định: `simulation/players.csv`).
 
-Tiêu chí đạt: chênh lệch số trận giữa người nhiều nhất và ít nhất không quá 1. Nếu không đạt, không được merge thay đổi thuật toán.
+Tiêu chí đạt: chênh lệch số trận giữa người nhiều nhất và ít nhất không quá 1 (khi có nhóm và từ 2 sân: xét người không có nhóm và từng nhóm riêng, cho phép tối đa 3% buổi không đạt, host chấp nhận 2026-11-14). Nếu không đạt, không được merge thay đổi thuật toán.
 
 Chạy bằng:
 
@@ -163,7 +165,7 @@ go run ./simulation -courts 2 -players 16 -runs 1000   # một cấu hình
 go run ./simulation -matrix -runs 1000                 # 1-3 sân, 7 đến 8 người mỗi sân
 ```
 
-Thêm `-v` để in từng buổi không đạt, `-file` để dùng danh sách người chơi khác, `-groups N` để ghép ngẫu nhiên N cặp đi chung (thay đổi ưu tiên nhóm phải đạt cả với `-groups 2` đến `4`). Buổi mà quy tắc giới tính/cân bằng khiến không thể công bằng (ví dụ có người không xếp được vào đội hình hợp lệ nào) được đếm riêng, không tính là lỗi.
+Thêm `-v` để in từng buổi không đạt, `-file` để dùng danh sách người chơi khác, `-groups N` để ghép ngẫu nhiên N nhóm đi chung, `-group-size K` để chọn số người mỗi nhóm (mặc định 2; thay đổi ưu tiên nhóm phải đạt cả với `-groups 2` đến `4` và với nhóm 3, 4 người). Buổi mà quy tắc giới tính/cân bằng khiến không thể công bằng (ví dụ có người không xếp được vào đội hình hợp lệ nào) được đếm riêng, không tính là lỗi.
 
 ### 7.3 Lệnh thường dùng
 

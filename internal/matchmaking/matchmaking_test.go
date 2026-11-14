@@ -310,7 +310,7 @@ func TestArrangeKeepsGroupOnOneTeamWithinBalance(t *testing.T) {
 	}
 }
 
-func TestArrangeDoesNotCountGroupAsRepeat(t *testing.T) {
+func TestArrangeKeepsGroupTeamEvenIfTheyJustPartnered(t *testing.T) {
 	four := [4]Candidate{cand(1, M, "TB"), cand(2, M, "TB"), cand(3, M, "TB"), cand(4, M, "TB")}
 	four[0].Group, four[1].Group = 1, 1
 	four[0].RecentTeammates, four[1].RecentTeammates = []int64{2}, []int64{1}
@@ -318,8 +318,87 @@ func TestArrangeDoesNotCountGroupAsRepeat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !teammates(l, 1, 2) || l.Repeats != 0 {
-		t.Fatalf("group was split as a repeat: %+v", l)
+	if !teammates(l, 1, 2) {
+		t.Fatalf("group was split: %+v", l)
+	}
+}
+
+func TestArrangeRotatesPartnersInsideWholeGroup(t *testing.T) {
+	four := [4]Candidate{cand(1, F, "TB"), cand(2, M, "TB"), cand(3, F, "TB"), cand(4, M, "TB")}
+	for i := range four {
+		four[i].Group = 1
+	}
+	four[0].RecentTeammates, four[1].RecentTeammates = []int64{2}, []int64{1}
+	l, err := Arrange(four, rules)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if teammates(l, 1, 2) {
+		t.Fatalf("want new partners inside the group, got %+v", l)
+	}
+}
+
+// thiGroup is Thi's group (1 Thi F, 2 friend F, 3 and 4 friends M) plus
+// four outsiders (5, 6 F and 7, 8 M), all equal.
+func thiGroup() []Candidate {
+	cands := []Candidate{
+		cand(1, F, "TB"), cand(2, F, "TB"), cand(3, M, "TB"), cand(4, M, "TB"),
+		cand(5, F, "TB"), cand(6, F, "TB"), cand(7, M, "TB"), cand(8, M, "TB"),
+	}
+	for i := 0; i < 4; i++ {
+		cands[i].Group = 1
+	}
+	return cands
+}
+
+func TestProposeWholeGroupWhenDue(t *testing.T) {
+	l, err := Propose(thiGroup(), rules)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sameIDs(ids(l), []int64{1, 2, 3, 4}) {
+		t.Fatalf("want the whole group together, got %+v", l)
+	}
+}
+
+func TestProposeGroupPairFacesOutsidersAfterWholeGroupMatch(t *testing.T) {
+	cands := thiGroup()
+	// The group just played 1+3 vs 2+4.
+	opp := map[int64][]int64{1: {2, 4}, 3: {2, 4}, 2: {1, 3}, 4: {1, 3}}
+	mate := map[int64][]int64{1: {3}, 3: {1}, 2: {4}, 4: {2}}
+	for i := 0; i < 4; i++ {
+		cands[i].PriorityCount = 1
+		cands[i].RecentOpponents = opp[cands[i].ID]
+		cands[i].RecentTeammates = mate[cands[i].ID]
+	}
+	for i := 4; i < 8; i++ {
+		cands[i].PriorityCount = 1
+		cands[i].ConsecutiveRest = 1
+	}
+	l, err := ProposeFor(cands, rules, Courts{Open: 2, OtherFree: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inGroup := 0
+	for _, id := range ids(l) {
+		if id <= 4 {
+			inGroup++
+		}
+	}
+	if inGroup != 2 {
+		t.Fatalf("want one group pair against outsiders, got %+v", l)
+	}
+	var pair [2]int64
+	switch {
+	case l.TeamA[0] <= 4 && l.TeamA[1] <= 4:
+		pair = l.TeamA
+	case l.TeamB[0] <= 4 && l.TeamB[1] <= 4:
+		pair = l.TeamB
+	default:
+		t.Fatalf("want the group pair on one team, got %+v", l)
+	}
+	if sameTeam(pair, 1, 3) || sameTeam(pair, 2, 4) {
+		t.Fatalf("want a new partner inside the group, got %+v", l)
 	}
 }
 
@@ -339,20 +418,115 @@ func TestProposePrefersGroupOnSameCourt(t *testing.T) {
 	}
 }
 
-func TestProposeGroupNeverBeatsFairness(t *testing.T) {
+func TestProposeGroupEntersTogether(t *testing.T) {
 	var cands []Candidate
-	for id := int64(1); id <= 5; id++ {
+	for id := int64(1); id <= 6; id++ {
 		cands = append(cands, cand(id, M, "TB"))
 	}
+	// 1 came with 5, who has one more match: they still go in together.
 	cands[4].PriorityCount = 1
 	cands[0].Group, cands[4].Group = 1, 1
-	l, err := Propose(cands, rules)
+	l, err := ProposeFor(cands, rules, Courts{Open: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := ids(l)
+	if contains(got, 1) != contains(got, 5) {
+		t.Fatalf("group split: %+v", l)
+	}
+
+	// With one court open the group is preferred, never waited for:
+	// fairness keeps 5 out.
+	l, err = Propose(cands, rules)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !sameIDs(ids(l), []int64{1, 2, 3, 4}) {
-		t.Fatalf("group pulled in a player with more matches: %+v", l)
+		t.Fatalf("one court: want the lowest counts, got %+v", l)
 	}
+}
+
+func TestGroupQueueWaitsForMateOnCourt(t *testing.T) {
+	waiting := []Candidate{cand(1, M, "TB"), cand(2, F, "TB"), cand(3, M, "TB")}
+	waiting[0].Group, waiting[1].Group = 1, 2
+	q := GroupQueue(waiting, map[int]bool{1: true}, map[int]bool{2: true})
+	if len(q) != 2 || q[0].ID != 2 || !q[0].MateHeld || q[1].MateHeld {
+		t.Fatalf("got %+v", q)
+	}
+}
+
+func TestProposeForSplitsGroupOnlyWithFreeCourt(t *testing.T) {
+	cands := thiGroup()
+	// Whole-group match just played: on one court the group sits out
+	// together; with a second free court one pair goes now.
+	for i := 0; i < 4; i++ {
+		for j := 0; j < 4; j++ {
+			if i != j {
+				cands[i].RecentOpponents = append(cands[i].RecentOpponents, int64(j+1))
+			}
+		}
+	}
+	l, err := ProposeFor(cands, rules, Courts{Open: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := countIn(ids(l), 1, 4); n != 0 && n != 4 {
+		t.Fatalf("one court must not split the group: %+v", l)
+	}
+	l, err = ProposeFor(cands, rules, Courts{Open: 2, OtherFree: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := countIn(ids(l), 1, 4); n != 2 {
+		t.Fatalf("want one group pair with a free court left, got %+v", l)
+	}
+
+	// The next court takes the rest of the group.
+	var rest []Candidate
+	used := map[int64]bool{}
+	for _, id := range ids(l) {
+		used[id] = true
+	}
+	for _, c := range cands {
+		if !used[c.ID] {
+			rest = append(rest, c)
+		}
+	}
+	rest = GroupQueue(rest, nil, map[int]bool{1: true})
+	l2, err := ProposeFor(rest, rules, Courts{Open: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := countIn(ids(l2), 1, 4); n != 2 {
+		t.Fatalf("want the rest of the group on the next court, got %+v", l2)
+	}
+}
+
+func TestProposeFreesGroupThatCannotBeSeatedWhole(t *testing.T) {
+	// Two men and a woman came together, the others are men: the group
+	// needs a fourth woman (3-1 at equal levels is invalid), so the men
+	// play with the others rather than everyone waiting.
+	cands := []Candidate{cand(1, M, "Y"), cand(2, M, "Y"), cand(3, F, "Y"), cand(4, M, "Y"), cand(5, M, "Y")}
+	for i := 0; i < 3; i++ {
+		cands[i].Group = 1
+	}
+	l, err := ProposeFor(cands, rules, Courts{Open: 2})
+	if err != nil {
+		t.Fatalf("group of three blocked every lineup: %v", err)
+	}
+	if !sameIDs(ids(l), []int64{1, 2, 4, 5}) {
+		t.Fatalf("got %+v", l)
+	}
+}
+
+func countIn(got []int64, lo, hi int64) int {
+	n := 0
+	for _, id := range got {
+		if id >= lo && id <= hi {
+			n++
+		}
+	}
+	return n
 }
 
 func TestProposeAvoidsThreeOneWhenMixedLineupExists(t *testing.T) {
@@ -498,5 +672,50 @@ func TestArrangeRotatesPartnersWithinBalance(t *testing.T) {
 	}
 	if teammates(l, 1, 4) || l.Repeats != 0 || !l.Balanced {
 		t.Fatalf("want new partners within balance, got %+v", l)
+	}
+}
+
+func TestProposeForKeepsGroupWholeWhenSplitForcesPlayerAhead(t *testing.T) {
+	// Two groups of three at 2 matches; Oanh and Nam at 3, Long at 4.
+	// Splitting the groups into pairs here would leave Hải and Quân for
+	// the next court, where only men fit beside them, so Long (4) would
+	// play ahead of Oanh (3).
+	cands := []Candidate{
+		cand(1, F, "Y"), cand(2, M, "TB+"), cand(3, M, "TBY"), // group 1
+		cand(4, F, "Y+"), cand(5, M, "TB+"), cand(6, M, "TB-"), // group 2
+		cand(7, F, "TB-"), cand(8, M, "TBY"), cand(9, M, "TB-"),
+	}
+	for i := range cands {
+		cands[i].PriorityCount = 2
+		if i < 6 {
+			cands[i].Group = i/3 + 1
+		}
+	}
+	cands[6].PriorityCount, cands[7].PriorityCount, cands[8].PriorityCount = 3, 3, 4
+
+	first, err := ProposeFor(cands, rules, Courts{Open: 2, OtherFree: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	used := map[int64]bool{}
+	held := map[int]bool{}
+	for _, id := range ids(first) {
+		used[id] = true
+		if g := cands[id-1].Group; g != 0 {
+			held[g] = true
+		}
+	}
+	var rest []Candidate
+	for _, c := range cands {
+		if !used[c.ID] {
+			rest = append(rest, c)
+		}
+	}
+	second, err := ProposeFor(GroupQueue(rest, nil, held), rules, Courts{Open: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if countIn(ids(first), 9, 9)+countIn(ids(second), 9, 9) != 0 {
+		t.Fatalf("Long (4 matches) played while Oanh (3) sat: %v then %v", ids(first), ids(second))
 	}
 }

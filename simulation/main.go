@@ -24,8 +24,10 @@ type options struct {
 	courts, players, runs  int
 	matchMinutes, duration int
 	seed                   int64
-	// groups pairs up that many players as having come together.
-	groups int
+	// groups marks that many random groups of groupSize players as having
+	// come together.
+	groups    int
+	groupSize int
 }
 
 type result struct {
@@ -35,6 +37,10 @@ type result struct {
 	excused      int // spread > 1 but the rules make a fair session impossible
 	firstFailure string
 }
+
+// groupWaitTolerancePct is the share of sessions (in percent) allowed a
+// two-match gap when groups wait for each other.
+const groupWaitTolerancePct = 3
 
 func main() {
 	var (
@@ -48,7 +54,8 @@ func main() {
 	flag.IntVar(&opt.matchMinutes, "match-minutes", 15, "length of one match")
 	flag.IntVar(&opt.duration, "duration", 120, "session length in minutes")
 	flag.Int64Var(&opt.seed, "seed", 1, "random seed")
-	flag.IntVar(&opt.groups, "groups", 0, "number of random pairs who came together")
+	flag.IntVar(&opt.groups, "groups", 0, "number of random groups who came together")
+	flag.IntVar(&opt.groupSize, "group-size", 2, "players per group (2 to 4)")
 	flag.StringVar(&file, "file", "simulation/players.csv", "CSV of players: name,gender,level")
 	flag.BoolVar(&matrix, "matrix", false, "run 1-3 courts with 7 to 8 players per court")
 	verbose := flag.Bool("v", false, "print every failing run")
@@ -81,7 +88,13 @@ func main() {
 		}
 		res := simulate(o, pool, *verbose)
 		status := "PASS"
-		if res.failed > 0 {
+		// The host accepted (2026-11-14) that groups waiting for each
+		// other may leave a few sessions with a two-match gap.
+		allowed := 0
+		if o.groups > 0 && matchmaking.GroupsWait(o.courts) {
+			allowed = res.runs * groupWaitTolerancePct / 100
+		}
+		if res.failed > allowed {
 			status, failed = "FAIL", true
 		}
 		fmt.Printf("%s courts=%d players=%-2d runs=%d  unfair: %d  unfair but impossible under the rules: %d  with unseatable player: %d  with idle court: %d\n",
@@ -201,9 +214,9 @@ func runSession(opt options, pool []poolPlayer, picked []int) (spread, idle, exc
 			ID: int64(i + 1), Gender: pool[idx].gender, Level: pool[idx].level,
 			Status: domain.PlayerWaiting, QueuedAt: start.Add(time.Duration(i) * time.Second),
 		}}
-		// picked is a random permutation, so consecutive players form random pairs.
-		if i < 2*opt.groups {
-			players[i].Group = i/2 + 1
+		// picked is a random permutation, so consecutive players form random groups.
+		if i < opt.groupSize*opt.groups {
+			players[i].Group = i/opt.groupSize + 1
 		}
 	}
 	byID := func(id int64) *simPlayer { return players[id-1] }
@@ -217,12 +230,21 @@ func runSession(opt options, pool []poolPlayer, picked []int) (spread, idle, exc
 		var drafts []matchmaking.Lineup
 		for court := 0; court < opt.courts; court++ {
 			var queue []matchmaking.Candidate
+			heldGroups := map[int]bool{}
 			for _, p := range players {
 				if p.Status == domain.PlayerWaiting && !held[p.ID] {
 					queue = append(queue, candidate(p, rules))
 				}
+				if held[p.ID] && p.Group != 0 {
+					heldGroups[p.Group] = true
+				}
 			}
-			lineup, err := matchmaking.Propose(queue, rules)
+			// Every match of a round ends together, so no group mate is
+			// on court when proposals are made.
+			if matchmaking.GroupsWait(opt.courts) {
+				queue = matchmaking.GroupQueue(queue, nil, heldGroups)
+			}
+			lineup, err := matchmaking.ProposeFor(queue, rules, matchmaking.Courts{Open: opt.courts, OtherFree: opt.courts - court - 1})
 			if err != nil {
 				if errors.Is(err, domain.ErrNoValidLineup) {
 					idle++
@@ -269,7 +291,11 @@ func runSession(opt options, pool []poolPlayer, picked []int) (spread, idle, exc
 		}
 	}
 
+	// Where groups wait for each other, the one-match gap binds players
+	// without a group, and players inside each group.
+	waits := matchmaking.GroupsWait(opt.courts)
 	min, max := -1, 0
+	groupMin, groupMax := map[int]int{}, map[int]int{}
 	var seated []*simPlayer
 	for _, p := range players {
 		if !seatable(p, players, rules) {
@@ -277,6 +303,15 @@ func runSession(opt options, pool []poolPlayer, picked []int) (spread, idle, exc
 			continue
 		}
 		seated = append(seated, p)
+		if p.Group != 0 && waits {
+			if m, ok := groupMin[p.Group]; !ok || p.MatchesPlayed < m {
+				groupMin[p.Group] = p.MatchesPlayed
+			}
+			if p.MatchesPlayed > groupMax[p.Group] {
+				groupMax[p.Group] = p.MatchesPlayed
+			}
+			continue
+		}
 		if min < 0 || p.MatchesPlayed < min {
 			min = p.MatchesPlayed
 		}
@@ -284,11 +319,23 @@ func runSession(opt options, pool []poolPlayer, picked []int) (spread, idle, exc
 			max = p.MatchesPlayed
 		}
 	}
+	if min < 0 {
+		min = max
+	}
+	for g := range groupMin {
+		if d := groupMax[g] - groupMin[g]; d > max-min {
+			min, max = 0, d
+		}
+	}
 	fairPossible = true
 	if max-min > 1 {
 		fairPossible = fairSchedulePossible(seated, rules, rounds*opt.courts)
 		for _, p := range players {
-			desc += fmt.Sprintf("%s(%s,%s)=%d ", p.name, p.Gender, p.Level, p.MatchesPlayed)
+			group := ""
+			if p.Group != 0 {
+				group = fmt.Sprintf(",N%d", p.Group)
+			}
+			desc += fmt.Sprintf("%s(%s,%s%s)=%d ", p.name, p.Gender, p.Level, group, p.MatchesPlayed)
 		}
 	}
 	return max - min, idle, excluded, fairPossible, desc

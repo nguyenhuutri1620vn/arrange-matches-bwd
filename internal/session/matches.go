@@ -95,13 +95,31 @@ func propose(ctx context.Context, q *storage.Queries, sess domain.Session, court
 	if err != nil {
 		return err
 	}
+	courts, err := q.ListCourts(ctx, sess.ID)
+	if err != nil {
+		return err
+	}
+	drafted := map[int64]bool{}
+	for _, d := range drafts {
+		drafted[d.CourtID] = true
+	}
+	otherFree := 0
+	for _, c := range courts {
+		if c.ID != court.ID && c.Index <= sess.CourtCount && c.Status == domain.CourtEmpty && !drafted[c.ID] {
+			otherFree++
+		}
+	}
 	var queue []matchmaking.Candidate
 	for i := range players {
 		if players[i].Status == domain.PlayerWaiting && !held[players[i].ID] {
 			queue = append(queue, candidateOf(&players[i], h))
 		}
 	}
-	lineup, err := matchmaking.Propose(queue, settings.Rules)
+	if matchmaking.GroupsWait(sess.CourtCount) {
+		playingGroups, heldGroups := groupStates(players, held)
+		queue = matchmaking.GroupQueue(queue, playingGroups, heldGroups)
+	}
+	lineup, err := matchmaking.ProposeFor(queue, settings.Rules, matchmaking.Courts{Open: sess.CourtCount, OtherFree: otherFree})
 	if err != nil {
 		return err
 	}

@@ -631,6 +631,36 @@ func TestGroupStaysTogetherAcrossMatches(t *testing.T) {
 	}
 }
 
+func TestGroupMateWaitsWhileOtherPlays(t *testing.T) {
+	f := newFixture(t)
+	state := f.open(2, 9)
+	state = f.must(f.svc.Propose(f.ctx, state.Courts[0].ID))
+	m := state.Courts[0].Match
+	state = f.must(f.svc.Confirm(f.ctx, m.ID, false))
+	var playing, waiting int64
+	for _, p := range state.Players {
+		switch {
+		case p.Status == domain.PlayerPlaying && playing == 0:
+			playing = p.ID
+		case p.Status == domain.PlayerWaiting && waiting == 0:
+			waiting = p.ID
+		}
+	}
+	f.must(f.svc.SetPlayerGroup(f.ctx, playing, 1))
+	state = f.must(f.svc.SetPlayerGroup(f.ctx, waiting, 1))
+	for _, p := range state.Players {
+		if p.WaitingForGroup != (p.ID == waiting) {
+			t.Fatalf("player %d: WaitingForGroup = %v", p.ID, p.WaitingForGroup)
+		}
+	}
+	state = f.must(f.svc.Propose(f.ctx, state.Courts[1].ID))
+	for _, mp := range state.Courts[1].Match.Players {
+		if mp.SessionPlayerID == waiting {
+			t.Fatal("proposed a player whose group mate is on court")
+		}
+	}
+}
+
 func TestSetPlayerGroupLimits(t *testing.T) {
 	f := newFixture(t)
 	state := f.open(1, 5)

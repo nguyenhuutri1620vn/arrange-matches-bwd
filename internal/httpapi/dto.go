@@ -97,6 +97,7 @@ type sessionPlayerDTO struct {
 	FeeOverride     *int64              `json:"fee_override"`
 	IsPaid          bool                `json:"is_paid"`
 	Held            bool                `json:"held"`
+	WaitingForGroup bool                `json:"waitingForGroup"`
 	QueuePosition   int                 `json:"queue_position"`
 	Group           int                 `json:"group"`
 }
@@ -142,7 +143,7 @@ func toStateDTO(s *session.State) *stateDTO {
 		out.Players = append(out.Players, sessionPlayerDTO{
 			ID: p.ID, PlayerID: p.PlayerID, Name: p.Name, Gender: p.Gender, Level: p.Level, IsRegular: p.IsRegular,
 			Status: p.Status, MatchesPlayed: p.MatchesPlayed, ConsecutiveRest: p.ConsecutiveRest,
-			Fee: p.Fee, FeeOverride: p.FeeOverride, IsPaid: p.IsPaid, Held: p.Held, QueuePosition: p.QueuePosition, Group: p.Group,
+			Fee: p.Fee, FeeOverride: p.FeeOverride, IsPaid: p.IsPaid, Held: p.Held, WaitingForGroup: p.WaitingForGroup, QueuePosition: p.QueuePosition, Group: p.Group,
 		})
 	}
 	return out
