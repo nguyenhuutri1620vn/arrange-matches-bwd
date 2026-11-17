@@ -36,6 +36,24 @@ type result struct {
 	unseatable   int // runs with a player no valid lineup can include
 	excused      int // spread > 1 but the rules make a fair session impossible
 	firstFailure string
+	stats        runStats
+}
+
+// runStats counts how lineups looked, summed over runs.
+type runStats struct {
+	matches, oddGender int
+}
+
+func (s *runStats) add(o runStats) {
+	s.matches += o.matches
+	s.oddGender += o.oddGender
+}
+
+func pct(n, d int) float64 {
+	if d == 0 {
+		return 0
+	}
+	return 100 * float64(n) / float64(d)
 }
 
 // groupWaitTolerancePct is the share of sessions (in percent) allowed a
@@ -99,6 +117,7 @@ func main() {
 		}
 		fmt.Printf("%s courts=%d players=%-2d runs=%d  unfair: %d  unfair but impossible under the rules: %d  with unseatable player: %d  with idle court: %d\n",
 			status, o.courts, o.players, res.runs, res.failed, res.excused, res.unseatable, res.stuckRuns)
+		fmt.Printf("  3-1: %.1f%% of %d matches\n", pct(res.stats.oddGender, res.stats.matches), res.stats.matches)
 		if res.firstFailure != "" {
 			fmt.Println("  first failure:", res.firstFailure)
 		}
@@ -150,6 +169,7 @@ func simulate(opt options, pool []poolPlayer, verbose bool) result {
 		spread, idle, excluded int
 		fairPossible           bool
 		desc                   string
+		stats                  runStats
 	}
 	outcomes := make([]outcome, opt.runs)
 	var wg sync.WaitGroup
@@ -160,7 +180,7 @@ func simulate(opt options, pool []poolPlayer, verbose bool) result {
 			defer wg.Done()
 			for i := range next {
 				o := &outcomes[i]
-				o.spread, o.idle, o.excluded, o.fairPossible, o.desc = runSession(opt, pool, picks[i])
+				o.spread, o.idle, o.excluded, o.fairPossible, o.desc = runSession(opt, pool, picks[i], &o.stats)
 			}
 		}()
 	}
@@ -172,6 +192,7 @@ func simulate(opt options, pool []poolPlayer, verbose bool) result {
 
 	res := result{runs: opt.runs}
 	for _, o := range outcomes {
+		res.stats.add(o.stats)
 		if o.excluded > 0 {
 			res.unseatable++
 		}
@@ -205,7 +226,7 @@ type simPlayer struct {
 // least matches played, how many court-rounds stayed idle because no valid
 // lineup existed, and how many players were left out of the spread because
 // the gender and balance rules allow no lineup that includes them.
-func runSession(opt options, pool []poolPlayer, picked []int) (spread, idle, excluded int, fairPossible bool, desc string) {
+func runSession(opt options, pool []poolPlayer, picked []int, st *runStats) (spread, idle, excluded int, fairPossible bool, desc string) {
 	rules := domain.DefaultSettings().Rules
 	start := time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC)
 	players := make([]*simPlayer, len(picked))
@@ -277,6 +298,16 @@ func runSession(opt options, pool []poolPlayer, picked []int) (spread, idle, exc
 		// All matches of the round finish together.
 		end := now.Add(time.Duration(opt.matchMinutes) * time.Minute)
 		for _, lineup := range drafts {
+			st.matches++
+			men := 0
+			for _, id := range lineupIDs(lineup) {
+				if byID(id).Gender == domain.GenderMale {
+					men++
+				}
+			}
+			if men%2 == 1 {
+				st.oddGender++
+			}
 			teams := [2][2]int64{lineup.TeamA, lineup.TeamB}
 			for t, team := range teams {
 				for i, id := range team {
