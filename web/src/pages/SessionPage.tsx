@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { api, type Court, type Gender, type Level, type Player, type SessionPlayer, type SessionState } from '../api'
+import { api, type Court, type Gender, type GroupChoice, type GroupPhase, type Level, type Player, type SessionGroup, type SessionPlayer, type SessionState } from '../api'
 import { dateVN, LEVELS, money, parseMoney, timeVN } from '../format'
 import { ErrorBanner, Field, GenderMark, LevelTag, MoneyInput, Segmented, Sheet, Shuttle, useAction } from '../ui'
 
@@ -207,6 +207,7 @@ function CourtsView({ state, busy, act }: ViewProps) {
   const [swap, setSwap] = useState<{ matchId: number; outId: number } | null>(null)
   const { session, courts, players } = state
   const byId = new Map(players.map((p) => [p.id, p]))
+  const groups = groupsById(state)
   const waiting = players.filter((p) => p.status === 'WAITING').sort((a, b) => a.queue_position - b.queue_position)
   const resting = players.filter((p) => p.status === 'RESTING')
   const selectedPlayer = selected === null ? undefined : byId.get(selected)
@@ -228,7 +229,7 @@ function CourtsView({ state, busy, act }: ViewProps) {
       </div>
 
       {courts.map((court) => (
-        <CourtCard key={court.id} court={court} byId={byId} busy={busy} act={act} onSwap={(matchId, outId) => setSwap({ matchId, outId })} />
+        <CourtCard key={court.id} court={court} byId={byId} groups={groups} busy={busy} act={act} onSwap={(matchId, outId) => setSwap({ matchId, outId })} />
       ))}
 
       <section>
@@ -250,7 +251,7 @@ function CourtsView({ state, busy, act }: ViewProps) {
                     {p.name}
                     {p.held && <span className="tag tag-held">Đã xếp</span>}
                     {p.waitingForGroup && <span className="tag tag-group">Chờ nhóm</span>}
-                    <GroupTag group={p.group} />
+                    <GroupTag group={groups.get(p.group)} withPhase />
                   </span>
                   <GenderMark gender={p.gender} />
                   <LevelTag level={p.level} />
@@ -273,7 +274,7 @@ function CourtsView({ state, busy, act }: ViewProps) {
                 <button className="queue-row queue-row-rest" onClick={() => setSelected(p.id)}>
                   <span className="queue-name">
                     {p.name}
-                    <GroupTag group={p.group} />
+                    <GroupTag group={groups.get(p.group)} />
                   </span>
                   <GenderMark gender={p.gender} />
                   <LevelTag level={p.level} />
@@ -293,7 +294,7 @@ function CourtsView({ state, busy, act }: ViewProps) {
             {selectedPlayer.gender === 'M' ? 'Nam' : 'Nữ'}, level {selectedPlayer.level}, {selectedPlayer.is_regular ? 'cố định' : 'vãng lai'}. Đã đánh{' '}
             {selectedPlayer.matches_played} trận.
           </p>
-          <GroupPicker player={selectedPlayer} players={players} busy={busy} act={act} />
+          <GroupPicker player={selectedPlayer} state={state} busy={busy} act={act} />
           {selectedPlayer.status === 'WAITING' && (
             <button
               className="btn"
@@ -366,32 +367,60 @@ function CourtsView({ state, busy, act }: ViewProps) {
   )
 }
 
-function GroupTag({ group }: { group: number }) {
-  return group ? <span className="tag tag-group">N{group}</span> : null
+function groupsById(state: SessionState): Map<number, SessionGroup> {
+  return new Map((state.groups ?? []).map((g) => [g.id, g]))
 }
 
-// GroupPicker offers the groups in use plus one new group number.
-function GroupPicker({ player, players, busy, act }: { player: SessionPlayer; players: SessionPlayer[]; busy: boolean; act: Act }) {
-  const size = new Map<number, number>()
-  for (const p of players) if (p.group) size.set(p.group, (size.get(p.group) ?? 0) + 1)
-  const used = [...size.keys()].sort((a, b) => a - b)
-  let fresh = 1
-  while (size.has(fresh)) fresh++
+const rhythmLabel: Record<GroupPhase, string> = { TOGETHER: 'chung', SPLIT: 'tách' }
+
+// GroupTag shows N1; with withPhase also where a pair or group of four
+// stands in its rhythm (groups of three always send one pair).
+function GroupTag({ group, withPhase }: { group?: SessionGroup; withPhase?: boolean }) {
+  // A group of one (the others left it) has no effect.
+  if (!group || group.size < 2) return null
+  const rhythm = withPhase && (group.size === 2 || group.size === 4) ? ` · ${rhythmLabel[group.phase]}` : ''
+  return (
+    <span className="tag tag-group">
+      N{group.no}
+      {rhythm}
+    </span>
+  )
+}
+
+const NEW_GROUP = -1
+
+// groupOptions lists Không, the groups with room (or the current one), and
+// a new group. Values: 0 none, NEW_GROUP, otherwise the group ID.
+function groupOptions(groups: SessionGroup[], current: number): [number, string][] {
   const options: [number, string][] = [[0, 'Không']]
-  for (const g of [...used, fresh].sort((a, b) => a - b)) {
-    // Full groups stay listed only for their own members.
-    if ((size.get(g) ?? 0) >= MAX_GROUP_SIZE && g !== player.group) continue
-    options.push([g, `N${g}`])
+  for (const g of groups) {
+    if (g.size >= MAX_GROUP_SIZE && g.id !== current) continue
+    options.push([g.id, `N${g.no} (${g.size})`])
   }
-  const members = players.filter((p) => p.group && p.group === player.group && p.id !== player.id)
+  options.push([NEW_GROUP, 'Nhóm mới'])
+  return options
+}
+
+function toChoice(value: number): GroupChoice {
+  if (value === NEW_GROUP) return { new_group: true }
+  return value ? { group_id: value } : {}
+}
+
+function GroupPicker({ player, state, busy, act }: { player: SessionPlayer; state: SessionState; busy: boolean; act: Act }) {
+  const members = state.players.filter((p) => p.group && p.group === player.group && p.id !== player.id)
   return (
     <div className="field">
       <span>Nhóm đi chung</span>
-      <Segmented value={player.group} onChange={(g) => !busy && g !== player.group && act(() => api.setGroup(player.id, g))} options={options} />
+      <Segmented
+        value={player.group}
+        onChange={(g) => !busy && g !== player.group && act(() => api.setGroup(player.id, toChoice(g)))}
+        options={groupOptions(state.groups ?? [], player.group)}
+        wrap
+      />
       <p className="hint">
         {members.length > 0
-          ? `Đi cùng ${members.map((p) => p.name).join(', ')}. App ưu tiên xếp chung sân, chung đội khi không làm ai phải chờ thêm.`
-          : 'Chọn cùng một số nhóm cho những người đi chung (tối đa 4 người).'}
+          ? `Đi cùng ${members.map((p) => p.name).join(', ')}. Đôi và nhóm 4 người luân phiên: một trận chung, rồi tách ra đánh với người khác. Nhóm 3 người: mỗi trận một cặp đánh chung.`
+          : 'Chọn cùng một nhóm cho những người đi chung (tối đa 4 người).'}
       </p>
     </div>
   )
@@ -400,12 +429,14 @@ function GroupPicker({ player, players, busy, act }: { player: SessionPlayer; pl
 function CourtCard({
   court,
   byId,
+  groups,
   busy,
   act,
   onSwap,
 }: {
   court: Court
   byId: Map<number, SessionPlayer>
+  groups: Map<number, SessionGroup>
   busy: boolean
   act: Act
   onSwap: (matchId: number, outId: number) => void
@@ -423,7 +454,7 @@ function CourtCard({
         <>
           <span className="chip-name">
             {p.name}
-            <GroupTag group={p.group} />
+            <GroupTag group={groups.get(p.group)} />
           </span>
           <span className="chip-meta">
             {p.gender === 'M' ? 'Nam' : 'Nữ'} {p.level}
@@ -489,6 +520,8 @@ function AddPlayersSheet({ state, busy, act, onClose }: ViewProps & { onClose: (
   const [gender, setGender] = useState<Gender>('M')
   const [level, setLevel] = useState<Level>('TBY')
   const [regular, setRegular] = useState(false)
+  // The group stays picked so the host can check in a whole group in a row.
+  const [group, setGroup] = useState(0)
   const local = useAction()
 
   useEffect(() => {
@@ -497,6 +530,16 @@ function AddPlayersSheet({ state, busy, act, onClose }: ViewProps & { onClose: (
   }, [])
 
   const inSession = new Set(state.players.map((p) => p.player_id))
+  const groups = state.groups ?? []
+  // A group that filled up (or was emptied) is no longer offered.
+  const picked = group === NEW_GROUP || groups.some((g) => g.id === group && g.size < MAX_GROUP_SIZE) ? group : 0
+
+  const checkIn = async (playerId: number) => {
+    const next = await act(() => api.checkIn(state.session.id, playerId, toChoice(picked)))
+    // After creating a group, later check-ins join it.
+    const joined = next?.players.find((p) => p.player_id === playerId)?.group
+    if (next && picked === NEW_GROUP && joined) setGroup(joined)
+  }
   const available = (directory ?? []).filter((p) => !inSession.has(p.id) && p.name.toLowerCase().includes(query.trim().toLowerCase()))
 
   const createAndCheckIn = async (e: FormEvent) => {
@@ -504,7 +547,7 @@ function AddPlayersSheet({ state, busy, act, onClose }: ViewProps & { onClose: (
     const created = await local.run(() => api.createPlayer({ name, gender, level, is_regular: regular, monthly_fee: 0, note: '' }))
     if (!created) return
     setDirectory((d) => [...(d ?? []), created])
-    await act(() => api.checkIn(state.session.id, created.id))
+    await checkIn(created.id)
     setName('')
     setCreating(false)
   }
@@ -512,6 +555,15 @@ function AddPlayersSheet({ state, busy, act, onClose }: ViewProps & { onClose: (
   return (
     <Sheet title="Thêm người vào buổi" onClose={onClose}>
       <ErrorBanner message={local.error} onClose={() => local.setError(null)} />
+      <div className="field">
+        <span>Nhóm đi chung</span>
+        <Segmented value={picked} onChange={setGroup} options={groupOptions(groups, 0)} wrap />
+        <p className="hint">
+          {picked === 0
+            ? 'Người đi một mình để “Không”.'
+            : 'Những người check-in tiếp theo sẽ vào nhóm này, tối đa 4 người.'}
+        </p>
+      </div>
       {creating ? (
         <form className="stack" onSubmit={createAndCheckIn}>
           <Field label="Tên">
@@ -556,7 +608,7 @@ function AddPlayersSheet({ state, busy, act, onClose }: ViewProps & { onClose: (
             <ul className="queue">
               {available.map((p) => (
                 <li key={p.id}>
-                  <button className="queue-row" disabled={busy} onClick={() => act(() => api.checkIn(state.session.id, p.id))}>
+                  <button className="queue-row" disabled={busy} onClick={() => checkIn(p.id)}>
                     <span className="queue-name">
                       {p.name}
                       {p.is_regular && <span className="tag">Cố định</span>}

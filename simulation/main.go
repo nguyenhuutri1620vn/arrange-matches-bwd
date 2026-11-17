@@ -42,11 +42,40 @@ type result struct {
 // runStats counts how lineups looked, summed over runs.
 type runStats struct {
 	matches, oddGender int
+	// groupMatches counts matches played by group members, onRhythm those
+	// that followed their group's rhythm (see onRhythm).
+	groupMatches, groupOnRhythm int
 }
 
 func (s *runStats) add(o runStats) {
 	s.matches += o.matches
 	s.oddGender += o.oddGender
+	s.groupMatches += o.groupMatches
+	s.groupOnRhythm += o.groupOnRhythm
+}
+
+// simGroup is a group's rhythm during a simulated session.
+type simGroup struct {
+	size       int
+	phase      domain.GroupPhase
+	phaseRound int
+}
+
+// onRhythm tells whether a match followed the group's phase: a pair teams
+// up when together and not when apart; a group of four plays whole when
+// together and sends one pair against outsiders when apart; a group of
+// three sends one pair.
+func onRhythm(g *simGroup, onCourt int, teamed bool) bool {
+	switch {
+	case g.size == 2 && g.phase == domain.GroupTogether:
+		return teamed
+	case g.size == 2:
+		return !teamed
+	case g.size == 4 && g.phase == domain.GroupTogether:
+		return onCourt == 4
+	default:
+		return onCourt == 2 && teamed
+	}
 }
 
 func pct(n, d int) float64 {
@@ -118,6 +147,9 @@ func main() {
 		fmt.Printf("%s courts=%d players=%-2d runs=%d  unfair: %d  unfair but impossible under the rules: %d  with unseatable player: %d  with idle court: %d\n",
 			status, o.courts, o.players, res.runs, res.failed, res.excused, res.unseatable, res.stuckRuns)
 		fmt.Printf("  3-1: %.1f%% of %d matches\n", pct(res.stats.oddGender, res.stats.matches), res.stats.matches)
+		if res.stats.groupMatches > 0 {
+			fmt.Printf("  group on rhythm: %.1f%% of %d group members' matches\n", pct(res.stats.groupOnRhythm, res.stats.groupMatches), res.stats.groupMatches)
+		}
 		if res.firstFailure != "" {
 			fmt.Println("  first failure:", res.firstFailure)
 		}
@@ -220,6 +252,8 @@ type simPlayer struct {
 	// latest matches first
 	teammates [][]int64
 	opponents [][]int64
+	// lastRound is the round of the player's latest match (-1: none).
+	lastRound int
 }
 
 // runSession plays one session and returns the spread between the most and
@@ -234,13 +268,23 @@ func runSession(opt options, pool []poolPlayer, picked []int, st *runStats) (spr
 		players[i] = &simPlayer{name: pool[idx].name, SessionPlayer: domain.SessionPlayer{
 			ID: int64(i + 1), Gender: pool[idx].gender, Level: pool[idx].level,
 			Status: domain.PlayerWaiting, QueuedAt: start.Add(time.Duration(i) * time.Second),
-		}}
+		}, lastRound: -1}
 		// picked is a random permutation, so consecutive players form random groups.
 		if i < opt.groupSize*opt.groups {
 			players[i].Group = i/opt.groupSize + 1
 		}
 	}
 	byID := func(id int64) *simPlayer { return players[id-1] }
+	groups := map[int]*simGroup{}
+	for _, p := range players {
+		if p.Group == 0 {
+			continue
+		}
+		if groups[p.Group] == nil {
+			groups[p.Group] = &simGroup{phase: domain.GroupTogether}
+		}
+		groups[p.Group].size++
+	}
 
 	rounds := opt.duration / opt.matchMinutes
 	for round := 0; round < rounds; round++ {
@@ -254,7 +298,7 @@ func runSession(opt options, pool []poolPlayer, picked []int, st *runStats) (spr
 			heldGroups := map[int]bool{}
 			for _, p := range players {
 				if p.Status == domain.PlayerWaiting && !held[p.ID] {
-					queue = append(queue, candidate(p, rules))
+					queue = append(queue, candidate(p, rules, groups))
 				}
 				if held[p.ID] && p.Group != 0 {
 					heldGroups[p.Group] = true
@@ -283,7 +327,9 @@ func runSession(opt options, pool []poolPlayer, picked []int, st *runStats) (spr
 			in := map[int64]bool{}
 			for _, id := range lineupIDs(lineup) {
 				in[id] = true
+				byID(id).lastRound = round
 			}
+			advanceGroups(groups, players, lineup, round, st)
 			for _, p := range players {
 				if in[p.ID] {
 					if err := p.StartMatch(); err != nil {
@@ -472,11 +518,51 @@ func seatable(p *simPlayer, players []*simPlayer, rules domain.MatchRules) bool 
 	return false
 }
 
-func candidate(p *simPlayer, rules domain.MatchRules) matchmaking.Candidate {
+// advanceGroups mirrors session.advanceGroups for a confirmed lineup and
+// counts how many group members' matches followed the rhythm.
+func advanceGroups(groups map[int]*simGroup, players []*simPlayer, l matchmaking.Lineup, round int, st *runStats) {
+	team := map[int64]int{}
+	for i, id := range lineupIDs(l) {
+		team[id] = i / 2
+	}
+	for grp, g := range groups {
+		onCourt, perTeam := 0, [2]int{}
+		splitDone := true
+		for _, p := range players {
+			if p.Group != grp {
+				continue
+			}
+			if t, ok := team[p.ID]; ok {
+				onCourt++
+				perTeam[t]++
+			}
+			// The round that began the phase is not part of it.
+			if p.lastRound <= g.phaseRound {
+				splitDone = false
+			}
+		}
+		if onCourt == 0 {
+			continue
+		}
+		teamed := perTeam[0] == 2 || perTeam[1] == 2
+		st.groupMatches += onCourt
+		if onRhythm(g, onCourt, teamed) {
+			st.groupOnRhythm += onCourt
+		}
+		if next := domain.NextGroupPhase(g.phase, g.size, onCourt, teamed, g.phase == domain.GroupSplit && splitDone); next != g.phase {
+			g.phase, g.phaseRound = next, round
+		}
+	}
+}
+
+func candidate(p *simPlayer, rules domain.MatchRules, groups map[int]*simGroup) matchmaking.Candidate {
 	c := matchmaking.Candidate{
 		ID: p.ID, Gender: p.Gender, Level: p.Level,
 		PriorityCount: p.PriorityCount(), ConsecutiveRest: p.ConsecutiveRest, QueuedAt: p.QueuedAt,
 		Group: p.Group,
+	}
+	if g := groups[p.Group]; g != nil {
+		c.GroupSize, c.GroupPhase = g.size, g.phase
 	}
 	for _, ids := range p.teammates {
 		c.RecentTeammates = append(c.RecentTeammates, ids...)

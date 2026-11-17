@@ -160,7 +160,7 @@ func TestMonthReportWithLiveSession(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if state, err = sessions.CheckIn(ctx, sid, p.ID); err != nil {
+		if state, err = sessions.CheckIn(ctx, sid, p.ID, session.GroupChoice{}); err != nil {
 			t.Fatal(err)
 		}
 	}

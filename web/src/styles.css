@@ -276,6 +276,16 @@ input[type='checkbox'] {
   color: var(--ink-soft);
 }
 
+/* Group pickers can list many groups: wrap instead of squeezing labels. */
+.segmented-wrap {
+  flex-wrap: wrap;
+}
+
+.segmented-wrap button {
+  flex: 1 0 auto;
+  padding: 0 10px;
+}
+
 .segmented button.on {
   background: var(--card);
   color: var(--court);

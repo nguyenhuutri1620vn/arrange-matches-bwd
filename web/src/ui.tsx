@@ -111,13 +111,15 @@ export function Segmented<T extends string | number>({
   value,
   options,
   onChange,
+  wrap,
 }: {
   value: T
   options: [T, string][]
   onChange: (v: T) => void
+  wrap?: boolean
 }) {
   return (
-    <div className="segmented" role="group">
+    <div className={wrap ? 'segmented segmented-wrap' : 'segmented'} role="group">
       {options.map(([v, label]) => (
         <button key={String(v)} type="button" className={v === value ? 'on' : ''} aria-pressed={v === value} onClick={() => onChange(v)}>
           {label}

@@ -26,6 +26,10 @@ type Candidate struct {
 	// Group marks players who came together (0: none). A group enters
 	// courts together: see GroupQueue and ProposeFor.
 	Group int
+	// GroupSize counts the group's members in the session and GroupPhase
+	// is its rhythm (see domain.NextGroupPhase).
+	GroupSize  int
+	GroupPhase domain.GroupPhase
 	// MateHeld marks a player whose group mate is already in another
 	// court's proposal: the group was split across two free courts and
 	// this player should join the next proposal.
@@ -41,7 +45,8 @@ type Lineup struct {
 	Balanced bool
 	// Repeats counts teammate and opponent pairings seen recently.
 	Repeats int
-	// GroupedTeams counts teams whose two players share a group.
+	// GroupedTeams counts teams whose two players share a group, minus
+	// those a pair in its split phase should avoid.
 	GroupedTeams int
 }
 
@@ -128,6 +133,17 @@ func GroupsWait(openCourts int) bool {
 	return openCourts >= 2
 }
 
+// GroupBinds reports whether a group of this size and phase enters courts
+// as one unit: a pair or a group of four due to play together. Apart, its
+// members play and wait on their own.
+func GroupBinds(size int, phase domain.GroupPhase) bool {
+	return domain.GroupHasRhythm(size) && phase == domain.GroupTogether
+}
+
+func (c *Candidate) binds() bool {
+	return c.Group != 0 && GroupBinds(c.GroupSize, c.GroupPhase)
+}
+
 // ProposeFor is Propose for one court of a session.
 //
 // When GroupsWait, groups enter together: a lineup with some of a group's waiting players
@@ -179,11 +195,11 @@ func proposeGroups(sorted, capped []Candidate, rules domain.MatchRules, courts C
 		return g
 	}
 	try := func(requireHeld bool) (Lineup, bool) {
-		if lineup, ok := proposeFrom(capped, rules, true, rule(capped, requireHeld)); ok {
+		if lineup, ok := proposeFrom(capped, rules, true, GroupsWait(courts.Open), rule(capped, requireHeld)); ok {
 			return lineup, true
 		}
 		if len(sorted) > len(capped) {
-			return proposeFrom(sorted, rules, false, rule(sorted, requireHeld))
+			return proposeFrom(sorted, rules, false, GroupsWait(courts.Open), rule(sorted, requireHeld))
 		}
 		return Lineup{}, false
 	}
@@ -210,7 +226,7 @@ func lineupIDs(l Lineup) [4]int64 {
 func leavesMates(l Lineup, cands []Candidate) bool {
 	in, groups := lineupSets(l, cands)
 	for _, c := range cands {
-		if !in[c.ID] && c.Group != 0 && groups[c.Group] {
+		if !in[c.ID] && c.binds() && groups[c.Group] {
 			return true
 		}
 	}
@@ -223,7 +239,7 @@ func lineupSets(l Lineup, cands []Candidate) (in map[int64]bool, groups map[int]
 		in[id] = true
 	}
 	for _, c := range cands {
-		if in[c.ID] && c.Group != 0 {
+		if in[c.ID] && c.binds() {
 			groups[c.Group] = true
 		}
 	}
@@ -268,10 +284,10 @@ func jointCounts(l Lineup, cands []Candidate, rules domain.MatchRules, courts Co
 func GroupQueue(waiting []Candidate, playing, held map[int]bool) []Candidate {
 	out := make([]Candidate, 0, len(waiting))
 	for _, c := range waiting {
-		if c.Group != 0 && playing[c.Group] {
+		if c.binds() && playing[c.Group] {
 			continue
 		}
-		c.MateHeld = c.Group != 0 && held[c.Group]
+		c.MateHeld = c.binds() && held[c.Group]
 		out = append(out, c)
 	}
 	return out
@@ -294,7 +310,7 @@ func newGroupRule(cands []Candidate, rules domain.MatchRules, split, requireHeld
 	g := &groupRule{avail: map[int]int{}, pending: map[int]bool{}, split: split}
 	members := map[int][]int{}
 	for i, c := range cands {
-		if c.Group == 0 {
+		if !c.binds() {
 			continue
 		}
 		members[c.Group] = append(members[c.Group], i)
@@ -423,10 +439,19 @@ func (g *groupRule) allows(four *[4]Candidate) bool {
 
 // proposeFrom widens the candidate window tier by tier until a lineup is
 // found. Lookahead requires len(sorted) <= maxCandidates.
-func proposeFrom(sorted []Candidate, rules domain.MatchRules, useLookahead bool, groups *groupRule) (Lineup, bool) {
+func proposeFrom(sorted []Candidate, rules domain.MatchRules, useLookahead, groupsFirst bool, groups *groupRule) (Lineup, bool) {
 	for end := windowEnd(sorted, 0); ; end = windowEnd(sorted, end) {
 		if end >= 4 {
-			if lineup, ok := bestInWindow(sorted, end, rules, useLookahead, groups); ok {
+			if lineup, odd, ok := bestInWindow(sorted, end, rules, useLookahead, groupsFirst, groups, false); ok {
+				// Rather than a 3-1, take one tier further for a
+				// same-gender or mixed lineup (host, 2026-11-16). An odd
+				// player who already sat out keeps the 3-1: letting them
+				// wait again leaves one court sessions two matches apart.
+				if next := windowEnd(sorted, end); odd && next > end {
+					if wider, _, ok := bestInWindow(sorted, next, rules, useLookahead, groupsFirst, groups, true); ok {
+						return wider, true
+					}
+				}
 				return lineup, true
 			}
 		}
@@ -458,6 +483,9 @@ type option struct {
 	oddGender bool
 	// grouped scores players who came together; see groupScore.
 	grouped int
+	// groupsFirst ranks grouped above hard-to-seat players. Only from two
+	// courts: on one court that costs fairness (sessions two matches apart).
+	groupsFirst bool
 	// groupStale counts same-group teams who partnered recently.
 	groupStale int
 	// overdue counts picked players who sat out overdueRest matches or more.
@@ -478,6 +506,9 @@ func (o *option) better(b *option) bool {
 	}
 	if o.oddGender != b.oddGender {
 		return !o.oddGender
+	}
+	if o.groupsFirst && o.grouped != b.grouped {
+		return o.grouped > b.grouped
 	}
 	if c := compareInts(o.scarcity[:], b.scarcity[:]); c != 0 {
 		return c < 0
@@ -520,7 +551,10 @@ func compareInts(a, b []int) int {
 	return 0
 }
 
-func bestInWindow(sorted []Candidate, end int, rules domain.MatchRules, useLookahead bool, groups *groupRule) (Lineup, bool) {
+// bestInWindow returns the best lineup among sorted[:end] and whether it
+// is a 3-1 whose odd player has not sat out yet. skipOdd leaves such
+// lineups out.
+func bestInWindow(sorted []Candidate, end int, rules domain.MatchRules, useLookahead, groupsFirst bool, groups *groupRule, skipOdd bool) (Lineup, bool, bool) {
 	w := sorted[:end]
 
 	// Keep every valid lineup tied on the best priority counts.
@@ -546,13 +580,18 @@ func bestInWindow(sorted []Candidate, end int, rules domain.MatchRules, useLooka
 					if err != nil || !lineup.Balanced {
 						continue
 					}
+					odd := oddOneOutFresh(four)
+					if skipOdd && odd {
+						continue
+					}
 					// Only a valid lineup may drop the ties it beats.
 					if len(ties) > 0 && compareInts(o.counts[:], ties[0].counts[:]) < 0 {
 						ties = ties[:0]
 					}
 					o.lineup = lineup
-					o.oddGender = oddOneOutFresh(four)
+					o.oddGender = odd
 					o.grouped = groupScore(four, &lineup)
+					o.groupsFirst = groupsFirst
 					o.groupStale = staleGroupTeams(four, &lineup)
 					o.courtMates = courtMatePairs(four)
 					for i := range four {
@@ -566,7 +605,7 @@ func bestInWindow(sorted []Candidate, end int, rules domain.MatchRules, useLooka
 		}
 	}
 	if len(ties) == 0 {
-		return Lineup{}, false
+		return Lineup{}, false, false
 	}
 
 	if useLookahead && len(ties) > 1 {
@@ -586,7 +625,7 @@ func bestInWindow(sorted []Candidate, end int, rules domain.MatchRules, useLooka
 			best = &ties[i]
 		}
 	}
-	return best.lineup, true
+	return best.lineup, best.oddGender, true
 }
 
 // lookahead scores a pick by simulating the matches that would follow it.
@@ -856,13 +895,7 @@ func Evaluate(teamA, teamB [2]Candidate, rules domain.MatchRules) (Lineup, error
 	if diff < 0 {
 		diff = -diff
 	}
-	grouped := 0
-	if sameGroup(a1, a2) {
-		grouped++
-	}
-	if sameGroup(b1, b2) {
-		grouped++
-	}
+	grouped := teamValue(a1, a2) + teamValue(b1, b2)
 	return Lineup{
 		TeamA:        [2]int64{a1.ID, a2.ID},
 		TeamB:        [2]int64{b1.ID, b2.ID},
@@ -921,36 +954,78 @@ func sameGroup(a, b *Candidate) bool {
 	return a.Group != 0 && a.Group == b.Group
 }
 
-// groupScore ranks a lineup for players who came together: one point per
-// same-group team. Group mates facing each other is the occasional
-// whole-group match: it keeps its points only when none of the group pairs
-// on court were opponents in their recent matches, and scores below an
-// ungrouped lineup otherwise, so a group mostly teams up against outsiders.
+// teamValue scores two teammates for their group: a pair in its split
+// phase should not team up; any other same-group team should.
+func teamValue(a, b *Candidate) int {
+	switch {
+	case !sameGroup(a, b):
+		return 0
+	case a.GroupSize == 2 && a.GroupPhase == domain.GroupSplit:
+		return -1
+	}
+	return 1
+}
+
+// groupScore ranks a lineup by the rhythm of each group on it:
+//   - a pair teams up when together and stays apart when split;
+//   - a group of four plays whole when together, and when split sends one
+//     pair against outsiders (never all four, never mates facing);
+//   - a group of three always sends one pair against outsiders, its third
+//     member elsewhere.
 func groupScore(four [4]Candidate, l *Lineup) int {
 	byID := make(map[int64]*Candidate, 4)
 	for i := range four {
 		byID[four[i].ID] = &four[i]
 	}
-	facing := false
+	type tally struct {
+		onCourt, teamed int
+		facing          bool
+		size            int
+		phase           domain.GroupPhase
+	}
+	groups := map[int]*tally{}
+	for i := range four {
+		c := &four[i]
+		if c.Group == 0 {
+			continue
+		}
+		g := groups[c.Group]
+		if g == nil {
+			g = &tally{size: c.GroupSize, phase: c.GroupPhase}
+			groups[c.Group] = g
+		}
+		g.onCourt++
+	}
+	for _, team := range [2][2]int64{l.TeamA, l.TeamB} {
+		if a := byID[team[0]]; sameGroup(a, byID[team[1]]) {
+			groups[a.Group].teamed++
+		}
+	}
 	for _, a := range l.TeamA {
 		for _, b := range l.TeamB {
-			if sameGroup(byID[a], byID[b]) {
-				facing = true
+			if x := byID[a]; sameGroup(x, byID[b]) {
+				groups[x.Group].facing = true
 			}
 		}
 	}
-	if !facing {
-		return l.GroupedTeams
-	}
-	for i := 0; i < 4; i++ {
-		for j := i + 1; j < 4; j++ {
-			a, b := &four[i], &four[j]
-			if sameGroup(a, b) && (contains(a.RecentOpponents, b.ID) || contains(b.RecentOpponents, a.ID)) {
-				return -1
-			}
+	score := 0
+	for _, g := range groups {
+		switch {
+		case g.size == 2 && g.phase == domain.GroupSplit:
+			score -= g.teamed
+		case g.size == 2:
+			score += g.teamed
+		case g.size == 4 && g.phase == domain.GroupTogether && g.onCourt == 4:
+			score += 3
+		case g.size == 4 && g.phase == domain.GroupSplit && (g.onCourt == 4 || g.facing):
+			score--
+		case g.size >= 3 && g.facing:
+			score--
+		default:
+			score += g.teamed
 		}
 	}
-	return l.GroupedTeams
+	return score
 }
 
 func staleGroupTeams(four [4]Candidate, l *Lineup) int {

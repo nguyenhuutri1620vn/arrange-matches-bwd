@@ -57,6 +57,6 @@ var (
 	ErrMatchNotOngoing   = newErr(KindConflict, "match_not_ongoing", "Trận này không đang diễn ra.")
 	ErrTransactionIsAuto = newErr(KindConflict, "transaction_is_auto", "Khoản phí buổi được tính tự động theo cờ đã thu, không sửa trực tiếp.")
 	ErrNotRegularPlayer  = newErr(KindConflict, "not_regular_player", "Phí tháng chỉ dành cho người cố định.")
-	ErrInvalidGroup      = newErr(KindInvalid, "invalid_group", "Số nhóm không hợp lệ.")
+	ErrInvalidGroup      = newErr(KindInvalid, "invalid_group", "Nhóm không hợp lệ.")
 	ErrGroupFull         = newErr(KindConflict, "group_full", "Nhóm đã đủ 4 người.")
 )

@@ -56,6 +56,7 @@ type State struct {
 	Session domain.Session
 	Courts  []CourtView
 	Players []PlayerView
+	Groups  []domain.SessionGroup
 	Fees    domain.SessionFees
 }
 
@@ -166,6 +167,11 @@ func loadState(ctx context.Context, q *storage.Queries, sess domain.Session) (*S
 	if err != nil {
 		return nil, err
 	}
+	groups, err := q.ListSessionGroups(ctx, sess.ID)
+	if err != nil {
+		return nil, err
+	}
+	facts := groupFactsOf(groups, players)
 
 	byID := make(map[int64]*domain.SessionPlayer, len(players))
 	for i := range players {
@@ -192,7 +198,7 @@ func loadState(ctx context.Context, q *storage.Queries, sess domain.Session) (*S
 		matchByCourt[m.CourtID] = view
 	}
 
-	state := &State{Session: sess, Fees: domain.SumSessionFees(&sess, players)}
+	state := &State{Session: sess, Groups: groups, Fees: domain.SumSessionFees(&sess, players)}
 	for _, c := range courts {
 		if c.Index > sess.CourtCount {
 			continue
@@ -203,7 +209,7 @@ func loadState(ctx context.Context, q *storage.Queries, sess domain.Session) (*S
 	var queue []matchmaking.Candidate
 	for i := range players {
 		if players[i].Status == domain.PlayerWaiting {
-			queue = append(queue, candidateOf(&players[i], nil))
+			queue = append(queue, candidateOf(&players[i], nil, facts))
 		}
 	}
 	matchmaking.SortByPriority(queue)
@@ -214,11 +220,12 @@ func loadState(ctx context.Context, q *storage.Queries, sess domain.Session) (*S
 	playingGroups, _ := groupStates(players, held)
 	for i := range players {
 		p := players[i]
+		f := facts[p.Group]
 		state.Players = append(state.Players, PlayerView{
 			SessionPlayer:   p,
 			Fee:             p.Fee(&sess),
 			Held:            held[p.ID],
-			WaitingForGroup: matchmaking.GroupsWait(sess.CourtCount) && p.Status == domain.PlayerWaiting && p.Group != 0 && playingGroups[p.Group],
+			WaitingForGroup: matchmaking.GroupsWait(sess.CourtCount) && p.Status == domain.PlayerWaiting && p.Group != 0 && matchmaking.GroupBinds(f.size, f.phase) && playingGroups[p.Group],
 			QueuePosition:   position[p.ID],
 		})
 	}
@@ -282,7 +289,7 @@ func loadHistory(ctx context.Context, q *storage.Queries, sessionID int64, lookb
 	return h, nil
 }
 
-func candidateOf(p *domain.SessionPlayer, h history) matchmaking.Candidate {
+func candidateOf(p *domain.SessionPlayer, h history, facts map[int]groupFacts) matchmaking.Candidate {
 	c := matchmaking.Candidate{
 		ID:              p.ID,
 		Gender:          p.Gender,
@@ -291,6 +298,8 @@ func candidateOf(p *domain.SessionPlayer, h history) matchmaking.Candidate {
 		ConsecutiveRest: p.ConsecutiveRest,
 		QueuedAt:        p.QueuedAt,
 		Group:           p.Group,
+		GroupSize:       facts[p.Group].size,
+		GroupPhase:      facts[p.Group].phase,
 	}
 	if r := h[p.ID]; r != nil {
 		c.RecentTeammates, c.RecentOpponents = r.teammates, r.opponents
@@ -308,10 +317,10 @@ func teamsOf(m domain.Match, byID map[int64]*domain.SessionPlayer, h history) (t
 		}
 		switch {
 		case mp.Team == domain.TeamA && a < 2:
-			teamA[a] = candidateOf(p, h)
+			teamA[a] = candidateOf(p, h, nil)
 			a++
 		case mp.Team == domain.TeamB && b < 2:
-			teamB[b] = candidateOf(p, h)
+			teamB[b] = candidateOf(p, h, nil)
 			b++
 		default:
 			return teamA, teamB, false

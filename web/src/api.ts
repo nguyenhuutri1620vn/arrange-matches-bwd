@@ -69,8 +69,26 @@ export interface SessionPlayer {
   held: boolean
   waitingForGroup: boolean
   queue_position: number
-  /** Players who came together share a group number; 0 means none. */
+  /** ID of the player's SessionGroup; 0 means none. */
   group: number
+}
+
+/** Together: the group's next match is a pair teaming up or all four on
+ * one court. Split: its members play apart until everyone has played. */
+export type GroupPhase = 'TOGETHER' | 'SPLIT'
+
+export interface SessionGroup {
+  id: number
+  /** Number shown to the host: N1, N2, … */
+  no: number
+  phase: GroupPhase
+  size: number
+}
+
+/** Picks a group: an existing one, a new one, or none (empty object). */
+export interface GroupChoice {
+  group_id?: number
+  new_group?: boolean
 }
 
 export interface Fees {
@@ -83,6 +101,7 @@ export interface SessionState {
   session: Session
   courts: Court[]
   players: SessionPlayer[]
+  groups: SessionGroup[]
   fees: Fees
 }
 
@@ -213,12 +232,13 @@ export const api = {
     post<SessionState>('/api/sessions', body),
   endSession: (id: number) => post<SessionState>(`/api/sessions/${id}/end`),
   setCourtCount: (id: number, court_count: number) => put<SessionState>(`/api/sessions/${id}/courts`, { court_count }),
-  checkIn: (sessionId: number, player_id: number) => post<SessionState>(`/api/sessions/${sessionId}/players`, { player_id }),
+  checkIn: (sessionId: number, player_id: number, group: GroupChoice = {}) =>
+    post<SessionState>(`/api/sessions/${sessionId}/players`, { player_id, ...group }),
   removeFromSession: (id: number) => del<SessionState>(`/api/session-players/${id}`),
   setStatus: (id: number, status: PlayerStatus) => put<SessionState>(`/api/session-players/${id}/status`, { status }),
   setPayment: (id: number, body: { is_paid?: boolean; fee_override?: number | null }) =>
     put<SessionState>(`/api/session-players/${id}/payment`, body),
-  setGroup: (id: number, group: number) => put<SessionState>(`/api/session-players/${id}/group`, { group }),
+  setGroup: (id: number, group: GroupChoice) => put<SessionState>(`/api/session-players/${id}/group`, group),
 
   propose: (courtId: number) => post<SessionState>(`/api/courts/${courtId}/propose`),
   swap: (matchId: number, out_id: number, in_id: number) => put<SessionState>(`/api/matches/${matchId}/swap`, { out_id, in_id }),

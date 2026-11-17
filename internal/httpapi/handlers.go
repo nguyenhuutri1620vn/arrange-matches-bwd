@@ -122,12 +122,13 @@ func (s *server) setCourtCount(r *http.Request) (any, error) {
 func (s *server) checkIn(r *http.Request) (any, error) {
 	var req struct {
 		PlayerID int64 `json:"player_id"`
+		groupRequest
 	}
 	if err := decode(r, &req); err != nil {
 		return nil, err
 	}
 	return stateAction(r, func(id int64) (*session.State, error) {
-		return s.sessions.CheckIn(r.Context(), id, req.PlayerID)
+		return s.sessions.CheckIn(r.Context(), id, req.PlayerID, req.choice())
 	})
 }
 
@@ -147,15 +148,24 @@ func (s *server) setPlayerStatus(r *http.Request) (any, error) {
 	})
 }
 
+// groupRequest picks a player's group: an existing one by ID, a new one,
+// or none when both are empty.
+type groupRequest struct {
+	GroupID  int64 `json:"group_id"`
+	NewGroup bool  `json:"new_group"`
+}
+
+func (g groupRequest) choice() session.GroupChoice {
+	return session.GroupChoice{ID: g.GroupID, New: g.NewGroup}
+}
+
 func (s *server) setPlayerGroup(r *http.Request) (any, error) {
-	var req struct {
-		Group int `json:"group"`
-	}
+	var req groupRequest
 	if err := decode(r, &req); err != nil {
 		return nil, err
 	}
 	return stateAction(r, func(id int64) (*session.State, error) {
-		return s.sessions.SetPlayerGroup(r.Context(), id, req.Group)
+		return s.sessions.SetPlayerGroup(r.Context(), id, req.choice())
 	})
 }
 

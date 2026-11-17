@@ -125,7 +125,7 @@ func (q *Queries) UpdateCourt(ctx context.Context, c domain.Court) error {
 }
 
 const sessionPlayerColumns = `sp.id, sp.session_id, sp.player_id, p.name, p.gender, p.level, p.is_regular,
-	sp.status, sp.matches_played, sp.priority_offset, sp.consecutive_rest, sp.queued_at, sp.checked_in_at, sp.fee_override, sp.is_paid, sp.group_no`
+	sp.status, sp.matches_played, sp.priority_offset, sp.consecutive_rest, sp.queued_at, sp.checked_in_at, sp.fee_override, sp.is_paid, sp.group_id`
 
 const sessionPlayerFrom = ` FROM session_players sp JOIN players p ON p.id = sp.player_id `
 
@@ -176,10 +176,10 @@ func (q *Queries) SessionPlayerExists(ctx context.Context, sessionID, playerID i
 
 func (q *Queries) InsertSessionPlayer(ctx context.Context, p domain.SessionPlayer) (int64, error) {
 	res, err := q.db.ExecContext(ctx,
-		`INSERT INTO session_players (session_id, player_id, status, matches_played, priority_offset, consecutive_rest, queued_at, checked_in_at, fee_override, is_paid)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO session_players (session_id, player_id, status, matches_played, priority_offset, consecutive_rest, queued_at, checked_in_at, fee_override, is_paid, group_id)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		p.SessionID, p.PlayerID, p.Status, p.MatchesPlayed, p.PriorityOffset, p.ConsecutiveRest,
-		toMs(p.QueuedAt), toMs(p.CheckedInAt), nullInt(p.FeeOverride), boolInt(p.IsPaid))
+		toMs(p.QueuedAt), toMs(p.CheckedInAt), nullInt(p.FeeOverride), boolInt(p.IsPaid), nullGroup(p.Group))
 	if err != nil {
 		return 0, err
 	}
@@ -189,7 +189,7 @@ func (q *Queries) InsertSessionPlayer(ctx context.Context, p domain.SessionPlaye
 // UpdateSessionPlayer saves the mutable in-session state of a player.
 func (q *Queries) UpdateSessionPlayer(ctx context.Context, p domain.SessionPlayer) error {
 	_, err := q.db.ExecContext(ctx,
-		`UPDATE session_players SET status = ?, matches_played = ?, priority_offset = ?, consecutive_rest = ?, queued_at = ?, fee_override = ?, is_paid = ?, group_no = ? WHERE id = ?`,
+		`UPDATE session_players SET status = ?, matches_played = ?, priority_offset = ?, consecutive_rest = ?, queued_at = ?, fee_override = ?, is_paid = ?, group_id = ? WHERE id = ?`,
 		p.Status, p.MatchesPlayed, p.PriorityOffset, p.ConsecutiveRest, toMs(p.QueuedAt), nullInt(p.FeeOverride), boolInt(p.IsPaid), nullGroup(p.Group), p.ID)
 	return err
 }

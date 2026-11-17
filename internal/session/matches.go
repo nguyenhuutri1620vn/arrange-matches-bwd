@@ -109,10 +109,15 @@ func propose(ctx context.Context, q *storage.Queries, sess domain.Session, court
 			otherFree++
 		}
 	}
+	groups, err := q.ListSessionGroups(ctx, sess.ID)
+	if err != nil {
+		return err
+	}
+	facts := groupFactsOf(groups, players)
 	var queue []matchmaking.Candidate
 	for i := range players {
 		if players[i].Status == domain.PlayerWaiting && !held[players[i].ID] {
-			queue = append(queue, candidateOf(&players[i], h))
+			queue = append(queue, candidateOf(&players[i], h, facts))
 		}
 	}
 	if matchmaking.GroupsWait(sess.CourtCount) {
@@ -140,6 +145,7 @@ type draftContext struct {
 	byID     map[int64]*domain.SessionPlayer
 	settings domain.Settings
 	history  history
+	groups   map[int]groupFacts
 }
 
 func loadDraft(ctx context.Context, q *storage.Queries, matchID int64) (*draftContext, error) {
@@ -164,7 +170,11 @@ func loadDraft(ctx context.Context, q *storage.Queries, matchID int64) (*draftCo
 	if d.settings, err = q.GetSettings(ctx); err != nil {
 		return nil, err
 	}
-	d.history, err = loadHistory(ctx, q, m.SessionID, d.settings.Rules.RepeatLookback)
+	if d.history, err = loadHistory(ctx, q, m.SessionID, d.settings.Rules.RepeatLookback); err != nil {
+		return nil, err
+	}
+	groups, err := q.ListSessionGroups(ctx, m.SessionID)
+	d.groups = groupFactsOf(groups, d.players)
 	return d, err
 }
 
@@ -207,7 +217,7 @@ func (s *Service) SwapDraftPlayer(ctx context.Context, matchID, outID, inID int6
 				id, found = inID, true
 			}
 			if p := d.byID[id]; p != nil && n < 4 {
-				four[n] = candidateOf(p, d.history)
+				four[n] = candidateOf(p, d.history, d.groups)
 				n++
 			}
 		}
@@ -275,6 +285,9 @@ func (s *Service) Confirm(ctx context.Context, matchID int64, force bool) (*Stat
 		now := s.now()
 		d.match.Status, d.match.StartedAt = domain.MatchOngoing, &now
 		if err := q.UpdateMatch(ctx, d.match); err != nil {
+			return 0, err
+		}
+		if err := advanceGroups(ctx, q, d.sess.ID, d.match, d.players, now); err != nil {
 			return 0, err
 		}
 		court.Status, court.CurrentMatchID = domain.CourtInUse, &d.match.ID

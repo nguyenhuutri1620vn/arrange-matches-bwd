@@ -53,7 +53,7 @@ func (f *fixture) open(courts, n int) *State {
 	}
 	for i := 0; i < n; i++ {
 		p := f.player("P"+string(rune('A'+i)), domain.GenderMale, domain.LevelTB, false)
-		if state, err = f.svc.CheckIn(f.ctx, state.Session.ID, p.ID); err != nil {
+		if state, err = f.svc.CheckIn(f.ctx, state.Session.ID, p.ID, GroupChoice{}); err != nil {
 			f.t.Fatal(err)
 		}
 	}
@@ -229,8 +229,8 @@ func TestSwapChecksGenderAndWarnsOnLevel(t *testing.T) {
 	sid := state.Session.ID
 	woman := f.player("Lan", domain.GenderFemale, domain.LevelTB, false)
 	weak := f.player("Khoa", domain.GenderMale, domain.LevelY, false)
-	state = f.must(f.svc.CheckIn(f.ctx, sid, woman.ID))
-	state = f.must(f.svc.CheckIn(f.ctx, sid, weak.ID))
+	state = f.must(f.svc.CheckIn(f.ctx, sid, woman.ID, GroupChoice{}))
+	state = f.must(f.svc.CheckIn(f.ctx, sid, weak.ID, GroupChoice{}))
 	state = f.must(f.svc.Propose(f.ctx, state.Courts[0].ID))
 	draft := state.Courts[0].Match
 	out := draft.Players[0].SessionPlayerID
@@ -337,7 +337,7 @@ func TestLateCheckInGetsPriorityOffset(t *testing.T) {
 		state = f.must(f.svc.DismissDraft(f.ctx, state.Courts[0].Match.ID))
 	}
 	late := f.player("Muộn", domain.GenderMale, domain.LevelTB, false)
-	state = f.must(f.svc.CheckIn(f.ctx, sid, late.ID))
+	state = f.must(f.svc.CheckIn(f.ctx, sid, late.ID, GroupChoice{}))
 	for _, p := range state.Players {
 		if p.PlayerID == late.ID {
 			if p.PriorityOffset != 2 || p.MatchesPlayed != 0 {
@@ -345,7 +345,7 @@ func TestLateCheckInGetsPriorityOffset(t *testing.T) {
 			}
 		}
 	}
-	if _, err := f.svc.CheckIn(f.ctx, sid, late.ID); !errors.Is(err, domain.ErrAlreadyCheckedIn) {
+	if _, err := f.svc.CheckIn(f.ctx, sid, late.ID, GroupChoice{}); !errors.Is(err, domain.ErrAlreadyCheckedIn) {
 		t.Fatalf("want ErrAlreadyCheckedIn, got %v", err)
 	}
 }
@@ -403,7 +403,7 @@ func TestEndSession(t *testing.T) {
 	sid := state.Session.ID
 	add := func(name string, g domain.Gender, regular bool) {
 		p := f.player(name, g, domain.LevelTB, regular)
-		state = f.must(f.svc.CheckIn(f.ctx, sid, p.ID))
+		state = f.must(f.svc.CheckIn(f.ctx, sid, p.ID, GroupChoice{}))
 	}
 	for _, n := range []string{"A", "B", "C", "D", "E", "F"} {
 		add(n, domain.GenderMale, false)
@@ -551,7 +551,7 @@ func TestSeedRewritesTrialSessionOf20261111(t *testing.T) {
 		trialID := state.Session.ID
 		for i := 0; i < 4; i++ {
 			p := f.player("Thử "+string(rune('A'+i)), domain.GenderMale, domain.LevelTB, false)
-			state = f.must(f.svc.CheckIn(f.ctx, trialID, p.ID))
+			state = f.must(f.svc.CheckIn(f.ctx, trialID, p.ID, GroupChoice{}))
 		}
 		state = f.must(f.svc.Propose(f.ctx, state.Courts[0].ID))
 		if ended {
@@ -603,31 +603,103 @@ func TestSeedRewritesTrialSessionOf20261111(t *testing.T) {
 	}
 }
 
-func TestGroupStaysTogetherAcrossMatches(t *testing.T) {
+// newGroup puts the session players in a new group and returns its ID.
+func (f *fixture) newGroup(ids ...int64) int64 {
+	f.t.Helper()
+	state := f.must(f.svc.SetPlayerGroup(f.ctx, ids[0], GroupChoice{New: true}))
+	g := int64(playerView(state, ids[0]).Group)
+	for _, id := range ids[1:] {
+		f.must(f.svc.SetPlayerGroup(f.ctx, id, GroupChoice{ID: g}))
+	}
+	return g
+}
+
+func playerView(s *State, id int64) PlayerView {
+	for _, p := range s.Players {
+		if p.ID == id {
+			return p
+		}
+	}
+	return PlayerView{}
+}
+
+func groupOf(s *State, id int64) domain.SessionGroup {
+	for _, g := range s.Groups {
+		if g.ID == id {
+			return g
+		}
+	}
+	return domain.SessionGroup{}
+}
+
+func teamOf(m *MatchView, id int64) domain.Team {
+	for _, mp := range m.Players {
+		if mp.SessionPlayerID == id {
+			return mp.Team
+		}
+	}
+	return ""
+}
+
+// playRound proposes, confirms and finishes one match on the court.
+func (f *fixture) playRound(courtIdx int) (*State, *MatchView) {
+	f.t.Helper()
+	state, err := f.svc.Current(f.ctx)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	// Finishing a match already proposes the next one on its court.
+	if state.Courts[courtIdx].Match == nil {
+		state = f.must(f.svc.Propose(f.ctx, state.Courts[courtIdx].ID))
+	}
+	m := state.Courts[courtIdx].Match
+	f.must(f.svc.Confirm(f.ctx, m.ID, false))
+	return f.must(f.svc.Finish(f.ctx, m.ID)), m
+}
+
+func TestPairAlternatesTogetherAndApart(t *testing.T) {
 	f := newFixture(t)
 	state := f.open(1, 4)
 	a, b := state.Players[0].ID, state.Players[3].ID
-	f.must(f.svc.SetPlayerGroup(f.ctx, a, 1))
-	state = f.must(f.svc.SetPlayerGroup(f.ctx, b, 1))
-	if state.Players[0].Group != 1 || state.Players[3].Group != 1 {
-		t.Fatalf("group not saved: %+v", state.Players)
-	}
-	team := func(m *MatchView, id int64) domain.Team {
-		for _, mp := range m.Players {
-			if mp.SessionPlayerID == id {
-				return mp.Team
-			}
+	g := f.newGroup(a, b)
+	for i, wantTeamed := range []bool{true, false, true} {
+		var m *MatchView
+		state, m = f.playRound(0)
+		if teamed := teamOf(m, a) == teamOf(m, b); teamed != wantTeamed {
+			t.Fatalf("match %d: teamed = %v, want %v", i+1, teamed, wantTeamed)
 		}
-		return ""
-	}
-	state = f.must(f.svc.Propose(f.ctx, state.Courts[0].ID))
-	for i := 0; i < 2; i++ {
-		m := state.Courts[0].Match
-		if team(m, a) != team(m, b) {
-			t.Fatalf("match %d split the group", i+1)
+		wantPhase := domain.GroupSplit
+		if !wantTeamed {
+			wantPhase = domain.GroupTogether
 		}
-		state = f.must(f.svc.Confirm(f.ctx, m.ID, false))
-		state = f.must(f.svc.Finish(f.ctx, m.ID))
+		if got := groupOf(state, g).Phase; got != wantPhase {
+			t.Fatalf("after match %d: phase %s, want %s", i+1, got, wantPhase)
+		}
+	}
+}
+
+func TestFourGroupSplitsAfterWholeMatch(t *testing.T) {
+	f := newFixture(t)
+	state := f.open(2, 8)
+	ids := []int64{state.Players[0].ID, state.Players[2].ID, state.Players[5].ID, state.Players[7].ID}
+	g := f.newGroup(ids...)
+	state, m := f.playRound(0)
+	in := 0
+	for _, id := range ids {
+		if teamOf(m, id) != "" {
+			in++
+		}
+	}
+	if in != 4 {
+		t.Fatalf("first match has %d of the group, want all 4", in)
+	}
+	if got := groupOf(state, g).Phase; got != domain.GroupSplit {
+		t.Fatalf("phase %s, want SPLIT", got)
+	}
+	for _, id := range ids {
+		if playerView(state, id).WaitingForGroup {
+			t.Fatal("no one waits for the group while it is split")
+		}
 	}
 }
 
@@ -646,8 +718,11 @@ func TestGroupMateWaitsWhileOtherPlays(t *testing.T) {
 			waiting = p.ID
 		}
 	}
-	f.must(f.svc.SetPlayerGroup(f.ctx, playing, 1))
-	state = f.must(f.svc.SetPlayerGroup(f.ctx, waiting, 1))
+	f.newGroup(playing, waiting)
+	state, err := f.svc.Current(f.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, p := range state.Players {
 		if p.WaitingForGroup != (p.ID == waiting) {
 			t.Fatalf("player %d: WaitingForGroup = %v", p.ID, p.WaitingForGroup)
@@ -664,21 +739,77 @@ func TestGroupMateWaitsWhileOtherPlays(t *testing.T) {
 func TestSetPlayerGroupLimits(t *testing.T) {
 	f := newFixture(t)
 	state := f.open(1, 5)
+	var ids []int64
 	for i := 0; i < domain.MaxGroupSize; i++ {
-		f.must(f.svc.SetPlayerGroup(f.ctx, state.Players[i].ID, 2))
+		ids = append(ids, state.Players[i].ID)
 	}
-	if _, err := f.svc.SetPlayerGroup(f.ctx, state.Players[4].ID, 2); !errors.Is(err, domain.ErrGroupFull) {
+	g := f.newGroup(ids...)
+	if _, err := f.svc.SetPlayerGroup(f.ctx, state.Players[4].ID, GroupChoice{ID: g}); !errors.Is(err, domain.ErrGroupFull) {
 		t.Fatalf("fifth member: want ErrGroupFull, got %v", err)
 	}
-	if _, err := f.svc.SetPlayerGroup(f.ctx, state.Players[0].ID, 2); err != nil {
+	if _, err := f.svc.SetPlayerGroup(f.ctx, ids[0], GroupChoice{ID: g}); err != nil {
 		t.Fatalf("re-saving a member's own group: %v", err)
 	}
-	if _, err := f.svc.SetPlayerGroup(f.ctx, state.Players[0].ID, -1); !errors.Is(err, domain.ErrInvalidGroup) {
+	if _, err := f.svc.SetPlayerGroup(f.ctx, ids[0], GroupChoice{ID: -1}); !errors.Is(err, domain.ErrInvalidGroup) {
 		t.Fatalf("negative group: want ErrInvalidGroup, got %v", err)
 	}
-	state = f.must(f.svc.SetPlayerGroup(f.ctx, state.Players[0].ID, 0))
-	if state.Players[0].Group != 0 {
-		t.Fatal("group 0 should clear it")
+	if _, err := f.svc.SetPlayerGroup(f.ctx, ids[0], GroupChoice{ID: 999}); !errors.Is(err, domain.ErrInvalidGroup) {
+		t.Fatalf("unknown group: want ErrInvalidGroup, got %v", err)
+	}
+	state = f.must(f.svc.SetPlayerGroup(f.ctx, ids[0], GroupChoice{}))
+	if playerView(state, ids[0]).Group != 0 {
+		t.Fatal("an empty choice should clear the group")
+	}
+}
+
+func TestEmptyGroupDeleted(t *testing.T) {
+	f := newFixture(t)
+	state := f.open(1, 4)
+	a := state.Players[0].ID
+	f.newGroup(a)
+	state = f.must(f.svc.SetPlayerGroup(f.ctx, a, GroupChoice{}))
+	if len(state.Groups) != 0 {
+		t.Fatalf("groups = %+v, want none", state.Groups)
+	}
+}
+
+func TestCheckInWithNewGroup(t *testing.T) {
+	f := newFixture(t)
+	state := f.open(1, 0)
+	sid := state.Session.ID
+	x := f.player("X", domain.GenderMale, domain.LevelTB, false)
+	y := f.player("Y", domain.GenderFemale, domain.LevelTB, false)
+	state = f.must(f.svc.CheckIn(f.ctx, sid, x.ID, GroupChoice{New: true}))
+	if len(state.Groups) != 1 || state.Groups[0].No != 1 || state.Groups[0].Phase != domain.GroupTogether {
+		t.Fatalf("groups = %+v", state.Groups)
+	}
+	g := state.Groups[0].ID
+	state = f.must(f.svc.CheckIn(f.ctx, sid, y.ID, GroupChoice{ID: g}))
+	for _, p := range state.Players {
+		if p.Group != int(g) {
+			t.Fatalf("player %s group %d, want %d", p.Name, p.Group, g)
+		}
+	}
+}
+
+func TestCheckInIntoFullGroupFails(t *testing.T) {
+	f := newFixture(t)
+	state := f.open(1, 4)
+	var ids []int64
+	for _, p := range state.Players {
+		ids = append(ids, p.ID)
+	}
+	g := f.newGroup(ids...)
+	late := f.player("Late", domain.GenderMale, domain.LevelTB, false)
+	if _, err := f.svc.CheckIn(f.ctx, state.Session.ID, late.ID, GroupChoice{ID: g}); !errors.Is(err, domain.ErrGroupFull) {
+		t.Fatalf("want ErrGroupFull, got %v", err)
+	}
+	state, err := f.svc.Current(f.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(state.Players) != 4 {
+		t.Fatalf("players = %d, want 4 (the late player must not be checked in)", len(state.Players))
 	}
 }
 
@@ -700,5 +831,41 @@ func TestSeedRaisesOldDefaultRepeatLookback(t *testing.T) {
 		if got.Rules.RepeatLookback != tc.want {
 			t.Fatalf("saved %d: lookback = %d, want %d", tc.saved, got.Rules.RepeatLookback, tc.want)
 		}
+	}
+}
+
+// The match that started the split phase does not count as playing apart.
+func TestEveryonePlayedSinceIgnoresTheMatchThatStartedThePhase(t *testing.T) {
+	t0 := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	at := func(min int) *time.Time { x := t0.Add(time.Duration(min) * time.Minute); return &x }
+	together := domain.Match{StartedAt: at(0), Players: []domain.MatchPlayer{{SessionPlayerID: 1}, {SessionPlayerID: 2}}}
+	apart := domain.Match{StartedAt: at(15), Players: []domain.MatchPlayer{{SessionPlayerID: 1}}}
+	if everyonePlayedSince([]int64{1, 2}, []domain.Match{together}, t0) {
+		t.Fatal("the together match itself counted as a split match")
+	}
+	if everyonePlayedSince([]int64{1, 2}, []domain.Match{together, apart}, t0) {
+		t.Fatal("2 has not played apart yet")
+	}
+	both := domain.Match{StartedAt: at(30), Players: []domain.MatchPlayer{{SessionPlayerID: 2}}}
+	if !everyonePlayedSince([]int64{1, 2}, []domain.Match{together, apart, both}, t0) {
+		t.Fatal("both played apart")
+	}
+}
+
+// A member who went home (RESTING) no longer counts: a group of four with
+// one gone acts as a group of three, a pair with one gone as no group.
+func TestGroupFactsSkipRestingMembers(t *testing.T) {
+	groups := []domain.SessionGroup{{ID: 1, Phase: domain.GroupTogether}, {ID: 2, Phase: domain.GroupSplit}}
+	players := []domain.SessionPlayer{
+		{ID: 1, Group: 1, Status: domain.PlayerWaiting},
+		{ID: 2, Group: 1, Status: domain.PlayerPlaying},
+		{ID: 3, Group: 1, Status: domain.PlayerWaiting},
+		{ID: 4, Group: 1, Status: domain.PlayerResting},
+		{ID: 5, Group: 2, Status: domain.PlayerWaiting},
+		{ID: 6, Group: 2, Status: domain.PlayerResting},
+	}
+	facts := groupFactsOf(groups, players)
+	if facts[1].size != 3 || facts[2].size != 1 {
+		t.Fatalf("sizes %d and %d, want 3 and 1", facts[1].size, facts[2].size)
 	}
 }

@@ -99,7 +99,15 @@ type sessionPlayerDTO struct {
 	Held            bool                `json:"held"`
 	WaitingForGroup bool                `json:"waitingForGroup"`
 	QueuePosition   int                 `json:"queue_position"`
-	Group           int                 `json:"group"`
+	// Group is the session group's ID (0: none); see stateDTO.Groups.
+	Group int `json:"group"`
+}
+
+type groupDTO struct {
+	ID    int64             `json:"id"`
+	No    int               `json:"no"`
+	Phase domain.GroupPhase `json:"phase"`
+	Size  int               `json:"size"`
 }
 
 type feesDTO struct {
@@ -116,6 +124,7 @@ type stateDTO struct {
 	Session sessionDTO         `json:"session"`
 	Courts  []courtDTO         `json:"courts"`
 	Players []sessionPlayerDTO `json:"players"`
+	Groups  []groupDTO         `json:"groups"`
 	Fees    feesDTO            `json:"fees"`
 }
 
@@ -123,7 +132,7 @@ func toStateDTO(s *session.State) *stateDTO {
 	if s == nil {
 		return nil
 	}
-	out := &stateDTO{Session: toSessionDTO(s.Session), Fees: toFeesDTO(s.Fees), Courts: []courtDTO{}, Players: []sessionPlayerDTO{}}
+	out := &stateDTO{Session: toSessionDTO(s.Session), Fees: toFeesDTO(s.Fees), Courts: []courtDTO{}, Players: []sessionPlayerDTO{}, Groups: []groupDTO{}}
 	for _, c := range s.Courts {
 		court := courtDTO{ID: c.ID, Index: c.Index, Status: c.Status}
 		if m := c.Match; m != nil {
@@ -145,6 +154,15 @@ func toStateDTO(s *session.State) *stateDTO {
 			Status: p.Status, MatchesPlayed: p.MatchesPlayed, ConsecutiveRest: p.ConsecutiveRest,
 			Fee: p.Fee, FeeOverride: p.FeeOverride, IsPaid: p.IsPaid, Held: p.Held, WaitingForGroup: p.WaitingForGroup, QueuePosition: p.QueuePosition, Group: p.Group,
 		})
+	}
+	for _, g := range s.Groups {
+		size := 0
+		for _, p := range s.Players {
+			if p.Group == int(g.ID) {
+				size++
+			}
+		}
+		out.Groups = append(out.Groups, groupDTO{ID: g.ID, No: g.No, Phase: g.Phase, Size: size})
 	}
 	return out
 }

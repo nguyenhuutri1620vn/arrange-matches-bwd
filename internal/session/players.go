@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"errors"
 
 	"arrange-matches-bwd/internal/domain"
 	"arrange-matches-bwd/internal/storage"
@@ -63,7 +64,7 @@ func (s *Service) DeletePlayer(ctx context.Context, id int64) error {
 
 // CheckIn adds a player from the address book to the session's queue.
 // Someone joining mid-session starts at the lowest priority count present.
-func (s *Service) CheckIn(ctx context.Context, sessionID, playerID int64) (*State, error) {
+func (s *Service) CheckIn(ctx context.Context, sessionID, playerID int64, group GroupChoice) (*State, error) {
 	return s.change(ctx, func(q *storage.Queries) (int64, error) {
 		sess, err := openSession(ctx, q, sessionID)
 		if err != nil {
@@ -86,6 +87,10 @@ func (s *Service) CheckIn(ctx context.Context, sessionID, playerID int64) (*Stat
 			return 0, err
 		}
 		now := s.now()
+		groupID, err := s.joinGroup(ctx, q, sess.ID, 0, group)
+		if err != nil {
+			return 0, err
+		}
 		_, err = q.InsertSessionPlayer(ctx, domain.SessionPlayer{
 			SessionID:      sess.ID,
 			PlayerID:       playerID,
@@ -93,9 +98,57 @@ func (s *Service) CheckIn(ctx context.Context, sessionID, playerID int64) (*Stat
 			PriorityOffset: domain.CheckInOffset(present),
 			QueuedAt:       now,
 			CheckedInAt:    now,
+			Group:          groupID,
 		})
 		return sess.ID, err
 	})
+}
+
+// GroupChoice picks a group for a player: an existing group by ID, a new
+// group, or none (zero value).
+type GroupChoice struct {
+	ID  int64
+	New bool
+}
+
+// joinGroup resolves the choice to a group ID in the session, creating a
+// new group when asked. current is the player's group, which always has
+// room for them.
+func (s *Service) joinGroup(ctx context.Context, q *storage.Queries, sessionID int64, current int, c GroupChoice) (int, error) {
+	if c.ID < 0 || (c.New && c.ID != 0) {
+		return 0, domain.ErrInvalidGroup
+	}
+	if c.New {
+		now := s.now()
+		g, err := q.InsertSessionGroup(ctx, domain.SessionGroup{
+			SessionID: sessionID, Phase: domain.GroupTogether, PhaseStartedAt: now, CreatedAt: now,
+		})
+		return int(g.ID), err
+	}
+	if c.ID == 0 || int(c.ID) == current {
+		return int(c.ID), nil
+	}
+	g, err := q.GetSessionGroup(ctx, c.ID)
+	if errors.Is(err, domain.ErrNotFound) || (err == nil && g.SessionID != sessionID) {
+		return 0, domain.ErrInvalidGroup
+	}
+	if err != nil {
+		return 0, err
+	}
+	players, err := q.ListSessionPlayers(ctx, sessionID)
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, o := range players {
+		if o.Group == int(c.ID) {
+			n++
+		}
+	}
+	if n >= domain.MaxGroupSize {
+		return 0, domain.ErrGroupFull
+	}
+	return int(c.ID), nil
 }
 
 // RemovePlayer takes a player out of the session. Only allowed before they
@@ -114,7 +167,10 @@ func (s *Service) RemovePlayer(ctx context.Context, sessionPlayerID int64) (*Sta
 		} else if n > 0 || p.MatchesPlayed > 0 || p.Status == domain.PlayerPlaying {
 			return 0, domain.ErrPlayerHasPlayed
 		}
-		return p.SessionID, q.DeleteSessionPlayer(ctx, p.ID)
+		if err := q.DeleteSessionPlayer(ctx, p.ID); err != nil {
+			return 0, err
+		}
+		return p.SessionID, q.DeleteEmptySessionGroups(ctx, p.SessionID)
 	})
 }
 
@@ -161,10 +217,7 @@ func (s *Service) SetPlayerStatus(ctx context.Context, sessionPlayerID int64, st
 
 // SetPlayerGroup marks who came together; group 0 clears it. Existing
 // proposals are kept: the grouping applies from the next one.
-func (s *Service) SetPlayerGroup(ctx context.Context, sessionPlayerID int64, group int) (*State, error) {
-	if group < 0 {
-		return nil, domain.ErrInvalidGroup
-	}
+func (s *Service) SetPlayerGroup(ctx context.Context, sessionPlayerID int64, group GroupChoice) (*State, error) {
 	return s.change(ctx, func(q *storage.Queries) (int64, error) {
 		p, err := q.GetSessionPlayer(ctx, sessionPlayerID)
 		if err != nil {
@@ -173,23 +226,13 @@ func (s *Service) SetPlayerGroup(ctx context.Context, sessionPlayerID int64, gro
 		if _, err := openSession(ctx, q, p.SessionID); err != nil {
 			return 0, err
 		}
-		if group != 0 && group != p.Group {
-			players, err := q.ListSessionPlayers(ctx, p.SessionID)
-			if err != nil {
-				return 0, err
-			}
-			n := 0
-			for _, o := range players {
-				if o.Group == group {
-					n++
-				}
-			}
-			if n >= domain.MaxGroupSize {
-				return 0, domain.ErrGroupFull
-			}
+		if p.Group, err = s.joinGroup(ctx, q, p.SessionID, p.Group, group); err != nil {
+			return 0, err
 		}
-		p.Group = group
-		return p.SessionID, q.UpdateSessionPlayer(ctx, p)
+		if err := q.UpdateSessionPlayer(ctx, p); err != nil {
+			return 0, err
+		}
+		return p.SessionID, q.DeleteEmptySessionGroups(ctx, p.SessionID)
 	})
 }
 
