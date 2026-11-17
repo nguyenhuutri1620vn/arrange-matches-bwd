@@ -62,16 +62,16 @@ type simGroup struct {
 }
 
 // onRhythm tells whether a match followed the group's phase: a pair teams
-// up when together and not when apart; a group of four plays whole when
-// together and sends one pair against outsiders when apart; a group of
-// three sends one pair.
+// up when together and not when apart; a group of four (four of a group
+// of five) plays whole when together and sends one pair against outsiders
+// when apart; a group of three sends one pair.
 func onRhythm(g *simGroup, onCourt int, teamed bool) bool {
 	switch {
 	case g.size == 2 && g.phase == domain.GroupTogether:
 		return teamed
 	case g.size == 2:
 		return !teamed
-	case g.size == 4 && g.phase == domain.GroupTogether:
+	case g.size >= 4 && g.phase == domain.GroupTogether:
 		return onCourt == 4
 	default:
 		return onCourt == 2 && teamed
@@ -102,7 +102,7 @@ func main() {
 	flag.IntVar(&opt.duration, "duration", 120, "session length in minutes")
 	flag.Int64Var(&opt.seed, "seed", 1, "random seed")
 	flag.IntVar(&opt.groups, "groups", 0, "number of random groups who came together")
-	flag.IntVar(&opt.groupSize, "group-size", 2, "players per group (2 to 4)")
+	flag.IntVar(&opt.groupSize, "group-size", 2, "players per group (2 to 5)")
 	flag.StringVar(&file, "file", "simulation/players.csv", "CSV of players: name,gender,level")
 	flag.BoolVar(&matrix, "matrix", false, "run 1-3 courts with 7 to 8 players per court")
 	verbose := flag.Bool("v", false, "print every failing run")
@@ -295,13 +295,13 @@ func runSession(opt options, pool []poolPlayer, picked []int, st *runStats) (spr
 		var drafts []matchmaking.Lineup
 		for court := 0; court < opt.courts; court++ {
 			var queue []matchmaking.Candidate
-			heldGroups := map[int]bool{}
+			heldGroups := map[int]int{}
 			for _, p := range players {
 				if p.Status == domain.PlayerWaiting && !held[p.ID] {
 					queue = append(queue, candidate(p, rules, groups))
 				}
 				if held[p.ID] && p.Group != 0 {
-					heldGroups[p.Group] = true
+					heldGroups[p.Group]++
 				}
 			}
 			// Every match of a round ends together, so no group mate is

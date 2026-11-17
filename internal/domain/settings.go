@@ -3,8 +3,9 @@ package domain
 const (
 	MinCourts = 1
 	MaxCourts = 3
-	// MaxGroupSize caps players who came together; four fill a court.
-	MaxGroupSize = 4
+	// MaxGroupSize caps players who came together. Four fill a court, so
+	// a group of five plays together four at a time (host, 2026-11-17).
+	MaxGroupSize = 5
 )
 
 // MatchRules are the tunable thresholds of the matchmaking rules.

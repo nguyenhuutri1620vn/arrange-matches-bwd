@@ -134,10 +134,17 @@ func GroupsWait(openCourts int) bool {
 }
 
 // GroupBinds reports whether a group of this size and phase enters courts
-// as one unit: a pair or a group of four due to play together. Apart, its
-// members play and wait on their own.
+// as one unit: a pair, or four members of a larger group, due to play
+// together. Apart, its members play and wait on their own.
 func GroupBinds(size int, phase domain.GroupPhase) bool {
 	return domain.GroupHasRhythm(size) && phase == domain.GroupTogether
+}
+
+// WaitsForMates reports whether a waiting member of a group waits for
+// the given number of mates on court: too few of the group are free to
+// play their together match.
+func WaitsForMates(size int, phase domain.GroupPhase, playing int) bool {
+	return GroupBinds(size, phase) && playing > 0 && size-playing < domain.GroupTogetherCount(size)
 }
 
 func (c *Candidate) binds() bool {
@@ -233,13 +240,22 @@ func leavesMates(l Lineup, cands []Candidate) bool {
 	return false
 }
 
+// lineupSets lists the lineup's players and the bound groups it takes
+// only part of. Four members of a group of five are not a part: the
+// fifth plays elsewhere.
 func lineupSets(l Lineup, cands []Candidate) (in map[int64]bool, groups map[int]bool) {
 	in, groups = map[int64]bool{}, map[int]bool{}
 	for _, id := range lineupIDs(l) {
 		in[id] = true
 	}
+	taken := map[int]int{}
 	for _, c := range cands {
 		if in[c.ID] && c.binds() {
+			taken[c.Group]++
+		}
+	}
+	for _, c := range cands {
+		if n := taken[c.Group]; n > 0 && n < domain.GroupTogetherCount(c.GroupSize) {
 			groups[c.Group] = true
 		}
 	}
@@ -280,14 +296,16 @@ func jointCounts(l Lineup, cands []Candidate, rules domain.MatchRules, courts Co
 // GroupQueue prepares the waiting players for a proposal. Players whose
 // group mate is on court wait for them and are left out; players whose
 // group mate is held by another court's proposal are marked MateHeld.
-// playing and held list the group numbers with a member in each state.
-func GroupQueue(waiting []Candidate, playing, held map[int]bool) []Candidate {
+// playing and held count each group's members in that state. A group of
+// five needs only four free members: with one on court the other four go,
+// and with four in a proposal the fifth is free.
+func GroupQueue(waiting []Candidate, playing, held map[int]int) []Candidate {
 	out := make([]Candidate, 0, len(waiting))
 	for _, c := range waiting {
-		if c.binds() && playing[c.Group] {
+		if c.Group != 0 && WaitsForMates(c.GroupSize, c.GroupPhase, playing[c.Group]) {
 			continue
 		}
-		c.MateHeld = c.binds() && held[c.Group]
+		c.MateHeld = c.binds() && held[c.Group] > 0 && held[c.Group] < domain.GroupTogetherCount(c.GroupSize)
 		out = append(out, c)
 	}
 	return out
@@ -301,13 +319,15 @@ type groupRule struct {
 	// pending marks groups already split across courts: the rest go
 	// together, no further split.
 	pending map[int]bool
-	split   bool
+	// whole marks groups of five, whose four never split across courts.
+	whole map[int]bool
+	split bool
 	// held lists the MateHeld players a lineup must contain.
 	held []int64
 }
 
 func newGroupRule(cands []Candidate, rules domain.MatchRules, split, requireHeld bool) *groupRule {
-	g := &groupRule{avail: map[int]int{}, pending: map[int]bool{}, split: split}
+	g := &groupRule{avail: map[int]int{}, pending: map[int]bool{}, whole: map[int]bool{}, split: split}
 	members := map[int][]int{}
 	for i, c := range cands {
 		if !c.binds() {
@@ -323,16 +343,29 @@ func newGroupRule(cands []Candidate, rules domain.MatchRules, split, requireHeld
 	}
 	for grp, idx := range members {
 		if seatableWhole(cands, idx, rules) {
-			g.avail[grp] = len(idx)
+			g.avail[grp] = min(len(idx), 4)
+			g.whole[grp] = cands[idx[0]].GroupSize > 4
 		}
 	}
 	return g
 }
 
 // seatableWhole reports whether some valid, balanced lineup holds all the
-// given players (at most four) together with other candidates.
+// given players together with other candidates; of more than four, any
+// four of them.
 func seatableWhole(cands []Candidate, idx []int, rules domain.MatchRules) bool {
 	if len(idx) > 4 {
+		for skip := range idx {
+			four := make([]int, 0, 4)
+			for k, i := range idx {
+				if k != skip {
+					four = append(four, i)
+				}
+			}
+			if seatableWhole(cands, four, rules) {
+				return true
+			}
+		}
 		return false
 	}
 	in := map[int]bool{}
@@ -430,7 +463,7 @@ func (g *groupRule) allows(four *[4]Candidate) bool {
 		if n == g.avail[grp] {
 			continue
 		}
-		if g.pending[grp] || !g.split || n != 2 {
+		if g.pending[grp] || g.whole[grp] || !g.split || n != 2 {
 			return false
 		}
 	}
@@ -969,7 +1002,8 @@ func teamValue(a, b *Candidate) int {
 // groupScore ranks a lineup by the rhythm of each group on it:
 //   - a pair teams up when together and stays apart when split;
 //   - a group of four plays whole when together, and when split sends one
-//     pair against outsiders (never all four, never mates facing);
+//     pair against outsiders (never all four, never mates facing); a
+//     group of five does the same with four of its members;
 //   - a group of three always sends one pair against outsiders, its third
 //     member elsewhere.
 func groupScore(four [4]Candidate, l *Lineup) int {
@@ -1015,9 +1049,9 @@ func groupScore(four [4]Candidate, l *Lineup) int {
 			score -= g.teamed
 		case g.size == 2:
 			score += g.teamed
-		case g.size == 4 && g.phase == domain.GroupTogether && g.onCourt == 4:
+		case g.size >= 4 && g.phase == domain.GroupTogether && g.onCourt == 4:
 			score += 3
-		case g.size == 4 && g.phase == domain.GroupSplit && (g.onCourt == 4 || g.facing):
+		case g.size >= 4 && g.phase == domain.GroupSplit && (g.onCourt == 4 || g.facing):
 			score--
 		case g.size >= 3 && g.facing:
 			score--

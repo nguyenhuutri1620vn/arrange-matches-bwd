@@ -462,16 +462,88 @@ func TestGroupQueueWaitsForMateOnCourt(t *testing.T) {
 	group(waiting, 1, together, 0)
 	group(waiting, 2, together, 1)
 	waiting[0].GroupSize, waiting[1].GroupSize = 2, 2 // their mates are elsewhere
-	q := GroupQueue(waiting, map[int]bool{1: true}, map[int]bool{2: true})
+	q := GroupQueue(waiting, map[int]int{1: 1}, map[int]int{2: 1})
 	if len(q) != 2 || q[0].ID != 2 || !q[0].MateHeld || q[1].MateHeld {
 		t.Fatalf("got %+v", q)
 	}
 
 	// Apart, nobody waits or is held for a mate.
 	waiting[0].GroupPhase, waiting[1].GroupPhase = apart, apart
-	q = GroupQueue(waiting, map[int]bool{1: true}, map[int]bool{2: true})
+	q = GroupQueue(waiting, map[int]int{1: 1}, map[int]int{2: 1})
 	if len(q) != 3 || q[1].MateHeld {
 		t.Fatalf("split phase: got %+v", q)
+	}
+}
+
+// In a group of five, four play together: the fifth neither waits for a
+// lone mate on court nor is held for four mates in a proposal.
+func TestGroupQueueFiveNeedsFourFree(t *testing.T) {
+	waiting := []Candidate{cand(1, M, "TB"), cand(2, F, "TB")}
+	group(waiting, 1, together, 0, 1)
+	for i := range waiting {
+		waiting[i].GroupSize = 5
+	}
+	if q := GroupQueue(waiting, map[int]int{1: 1}, nil); len(q) != 2 {
+		t.Fatalf("one mate on court: want both queued, got %+v", q)
+	}
+	if q := GroupQueue(waiting, map[int]int{1: 2}, nil); len(q) != 0 {
+		t.Fatalf("two mates on court: want both waiting, got %+v", q)
+	}
+	q := GroupQueue(waiting[:1], nil, map[int]int{1: 4})
+	if len(q) != 1 || q[0].MateHeld {
+		t.Fatalf("four mates drafted: want the fifth free, got %+v", q)
+	}
+	q = GroupQueue(waiting[:1], nil, map[int]int{1: 2})
+	if len(q) != 1 || !q[0].MateHeld {
+		t.Fatalf("two mates drafted: want the rest held, got %+v", q)
+	}
+}
+
+func fiveGroup(phase domain.GroupPhase) []Candidate {
+	cands := []Candidate{
+		cand(1, F, "TB"), cand(2, F, "TB"), cand(3, M, "TB"), cand(4, M, "TB"), cand(5, M, "TB"),
+		cand(6, F, "TB"), cand(7, F, "TB"), cand(8, M, "TB"), cand(9, M, "TB"),
+	}
+	group(cands, 1, phase, 0, 1, 2, 3, 4)
+	return cands
+}
+
+// A group of five due to play together sends four of its members to one
+// court, even with another court free, and never splits across courts.
+func TestFiveTogetherPhasePlaysFour(t *testing.T) {
+	for _, free := range []int{0, 1} {
+		l, err := ProposeFor(fiveGroup(together), rules, Courts{Open: 2, OtherFree: free})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n := countIn(ids(l), 1, 5); n != 4 {
+			t.Fatalf("other free courts %d: want four of the group, got %+v", free, l)
+		}
+	}
+}
+
+// The member ahead in matches is the one left out of the four.
+func TestFiveTogetherLeavesOutPlayerAhead(t *testing.T) {
+	cands := fiveGroup(together)
+	for i := 4; i < len(cands); i++ {
+		cands[i].PriorityCount = 1
+	}
+	l, err := ProposeFor(cands, rules, Courts{Open: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sameIDs(ids(l), []int64{1, 2, 3, 4}) {
+		t.Fatalf("want members 1-4, got %+v", l)
+	}
+}
+
+func TestFiveSplitPhaseSendsOnePair(t *testing.T) {
+	l, err := ProposeFor(fiveGroup(apart), rules, Courts{Open: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := countIn(ids(l), 1, 5); n != 2 {
+		t.Fatalf("want one pair of the group, got %+v", l)
 	}
 }
 

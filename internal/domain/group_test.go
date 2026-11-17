@@ -21,6 +21,9 @@ func TestNextGroupPhase(t *testing.T) {
 		{"four pair stays together", GroupTogether, 4, 2, true, false, GroupTogether},
 		{"four split done", GroupSplit, 4, 2, true, true, GroupTogether},
 		{"four split not done", GroupSplit, 4, 2, true, false, GroupSplit},
+		{"five with four on court ends together", GroupTogether, 5, 4, true, false, GroupSplit},
+		{"five pair stays together", GroupTogether, 5, 2, true, false, GroupTogether},
+		{"five split done", GroupSplit, 5, 2, true, true, GroupTogether},
 		{"three has no rhythm", GroupTogether, 3, 3, true, true, GroupTogether},
 		{"alone has no rhythm", GroupSplit, 1, 1, false, true, GroupSplit},
 	}
@@ -32,7 +35,7 @@ func TestNextGroupPhase(t *testing.T) {
 }
 
 func TestGroupHasRhythm(t *testing.T) {
-	for size, want := range map[int]bool{1: false, 2: true, 3: false, 4: true} {
+	for size, want := range map[int]bool{1: false, 2: true, 3: false, 4: true, 5: true} {
 		if got := GroupHasRhythm(size); got != want {
 			t.Errorf("size %d: got %v, want %v", size, got, want)
 		}

@@ -738,14 +738,14 @@ func TestGroupMateWaitsWhileOtherPlays(t *testing.T) {
 
 func TestSetPlayerGroupLimits(t *testing.T) {
 	f := newFixture(t)
-	state := f.open(1, 5)
+	state := f.open(1, domain.MaxGroupSize+1)
 	var ids []int64
 	for i := 0; i < domain.MaxGroupSize; i++ {
 		ids = append(ids, state.Players[i].ID)
 	}
 	g := f.newGroup(ids...)
-	if _, err := f.svc.SetPlayerGroup(f.ctx, state.Players[4].ID, GroupChoice{ID: g}); !errors.Is(err, domain.ErrGroupFull) {
-		t.Fatalf("fifth member: want ErrGroupFull, got %v", err)
+	if _, err := f.svc.SetPlayerGroup(f.ctx, state.Players[domain.MaxGroupSize].ID, GroupChoice{ID: g}); !errors.Is(err, domain.ErrGroupFull) {
+		t.Fatalf("member over the limit: want ErrGroupFull, got %v", err)
 	}
 	if _, err := f.svc.SetPlayerGroup(f.ctx, ids[0], GroupChoice{ID: g}); err != nil {
 		t.Fatalf("re-saving a member's own group: %v", err)
@@ -794,7 +794,7 @@ func TestCheckInWithNewGroup(t *testing.T) {
 
 func TestCheckInIntoFullGroupFails(t *testing.T) {
 	f := newFixture(t)
-	state := f.open(1, 4)
+	state := f.open(1, domain.MaxGroupSize)
 	var ids []int64
 	for _, p := range state.Players {
 		ids = append(ids, p.ID)
@@ -808,8 +808,8 @@ func TestCheckInIntoFullGroupFails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(state.Players) != 4 {
-		t.Fatalf("players = %d, want 4 (the late player must not be checked in)", len(state.Players))
+	if len(state.Players) != domain.MaxGroupSize {
+		t.Fatalf("players = %d, want %d (the late player must not be checked in)", len(state.Players), domain.MaxGroupSize)
 	}
 }
 
@@ -867,5 +867,45 @@ func TestGroupFactsSkipRestingMembers(t *testing.T) {
 	facts := groupFactsOf(groups, players)
 	if facts[1].size != 3 || facts[2].size != 1 {
 		t.Fatalf("sizes %d and %d, want 3 and 1", facts[1].size, facts[2].size)
+	}
+}
+
+// A group of five plays its together match four at a time: the fifth is
+// free for the other court, and the group then splits.
+func TestGroupOfFivePlaysFourTogether(t *testing.T) {
+	f := newFixture(t)
+	state := f.open(2, 9)
+	var ids []int64
+	for i := 0; i < 5; i++ {
+		ids = append(ids, state.Players[i].ID)
+	}
+	g := f.newGroup(ids...)
+	member := map[int64]bool{}
+	for _, id := range ids {
+		member[id] = true
+	}
+	inGroup := func(m *MatchView) int {
+		n := 0
+		for _, mp := range m.Players {
+			if member[mp.SessionPlayerID] {
+				n++
+			}
+		}
+		return n
+	}
+	state = f.must(f.svc.Propose(f.ctx, state.Courts[0].ID))
+	first := state.Courts[0].Match
+	if n := inGroup(first); n != 4 {
+		t.Fatalf("first court: %d group members, want 4", n)
+	}
+	state = f.must(f.svc.Propose(f.ctx, state.Courts[1].ID))
+	if n := inGroup(state.Courts[1].Match); n != 1 {
+		t.Fatalf("second court: %d group members, want the fifth", n)
+	}
+	state = f.must(f.svc.Confirm(f.ctx, first.ID, false))
+	for _, grp := range state.Groups {
+		if grp.ID == g && grp.Phase != domain.GroupSplit {
+			t.Fatalf("phase %s after four played together, want SPLIT", grp.Phase)
+		}
 	}
 }

@@ -225,7 +225,7 @@ func loadState(ctx context.Context, q *storage.Queries, sess domain.Session) (*S
 			SessionPlayer:   p,
 			Fee:             p.Fee(&sess),
 			Held:            held[p.ID],
-			WaitingForGroup: matchmaking.GroupsWait(sess.CourtCount) && p.Status == domain.PlayerWaiting && p.Group != 0 && matchmaking.GroupBinds(f.size, f.phase) && playingGroups[p.Group],
+			WaitingForGroup: matchmaking.GroupsWait(sess.CourtCount) && p.Status == domain.PlayerWaiting && p.Group != 0 && matchmaking.WaitsForMates(f.size, f.phase, playingGroups[p.Group]),
 			QueuePosition:   position[p.ID],
 		})
 	}
@@ -338,20 +338,20 @@ func matchPlayers(l matchmaking.Lineup) []domain.MatchPlayer {
 	}
 }
 
-// groupStates lists the groups with a member on court and those with a
-// member held by a proposal.
-func groupStates(players []domain.SessionPlayer, held map[int64]bool) (playing, drafted map[int]bool) {
-	playing, drafted = map[int]bool{}, map[int]bool{}
+// groupStates counts each group's members on court and those held by a
+// proposal.
+func groupStates(players []domain.SessionPlayer, held map[int64]bool) (playing, drafted map[int]int) {
+	playing, drafted = map[int]int{}, map[int]int{}
 	for i := range players {
 		p := &players[i]
 		if p.Group == 0 {
 			continue
 		}
 		if p.Status == domain.PlayerPlaying {
-			playing[p.Group] = true
+			playing[p.Group]++
 		}
 		if held[p.ID] {
-			drafted[p.Group] = true
+			drafted[p.Group]++
 		}
 	}
 	return playing, drafted

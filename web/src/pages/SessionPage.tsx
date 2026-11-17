@@ -4,7 +4,7 @@ import { dateVN, LEVELS, money, parseMoney, timeVN } from '../format'
 import { ErrorBanner, Field, GenderMark, LevelTag, MoneyInput, Segmented, Sheet, Shuttle, useAction } from '../ui'
 
 const POLL_MS = 3000
-const MAX_GROUP_SIZE = 4
+const MAX_GROUP_SIZE = 5
 
 export function SessionPage() {
   // undefined: first load; null: no open session.
@@ -378,7 +378,7 @@ const rhythmLabel: Record<GroupPhase, string> = { TOGETHER: 'chung', SPLIT: 'tá
 function GroupTag({ group, withPhase }: { group?: SessionGroup; withPhase?: boolean }) {
   // A group of one (the others left it) has no effect.
   if (!group || group.size < 2) return null
-  const rhythm = withPhase && (group.size === 2 || group.size === 4) ? ` · ${rhythmLabel[group.phase]}` : ''
+  const rhythm = withPhase && (group.size === 2 || group.size >= 4) ? ` · ${rhythmLabel[group.phase]}` : ''
   return (
     <span className="tag tag-group">
       N{group.no}
@@ -419,8 +419,8 @@ function GroupPicker({ player, state, busy, act }: { player: SessionPlayer; stat
       />
       <p className="hint">
         {members.length > 0
-          ? `Đi cùng ${members.map((p) => p.name).join(', ')}. Đôi và nhóm 4 người luân phiên: một trận chung, rồi tách ra đánh với người khác. Nhóm 3 người: mỗi trận một cặp đánh chung.`
-          : 'Chọn cùng một nhóm cho những người đi chung (tối đa 4 người).'}
+          ? `Đi cùng ${members.map((p) => p.name).join(', ')}. Đôi và nhóm 4-5 người luân phiên: một trận chung (nhóm 5 thì 4 người chung sân, người thứ năm đổi lượt), rồi tách ra đánh với người khác. Nhóm 3 người: mỗi trận một cặp đánh chung.`
+          : 'Chọn cùng một nhóm cho những người đi chung (tối đa 5 người). Một buổi có thể có nhiều nhóm.'}
       </p>
     </div>
   )
@@ -561,7 +561,7 @@ function AddPlayersSheet({ state, busy, act, onClose }: ViewProps & { onClose: (
         <p className="hint">
           {picked === 0
             ? 'Người đi một mình để “Không”.'
-            : 'Những người check-in tiếp theo sẽ vào nhóm này, tối đa 4 người.'}
+            : 'Những người check-in tiếp theo sẽ vào nhóm này, tối đa 5 người.'}
         </p>
       </div>
       {creating ? (
