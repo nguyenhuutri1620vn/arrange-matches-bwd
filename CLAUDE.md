@@ -80,7 +80,7 @@ Thứ tự ưu tiên khi chọn người từ hàng chờ:
 
 Mục tiêu: chênh lệch số trận giữa người nhiều nhất và ít nhất không vượt quá 1 khi đủ người và thời gian. Quy tắc giới tính luôn thắng công bằng.
 
-Nhóm đi chung (mục 6.7 của `docs/raw_requirement.md`), khi mở từ 2 sân, vào sân cùng nhau và chờ nhau: người có bạn cùng nhóm đang `PLAYING` không được đề xuất; đề xuất có người trong nhóm phải có đủ nhóm, trừ khi còn sân trống khác thì được tách một đôi. Khi đó mục tiêu ≤ 1 trận chỉ bắt buộc với người không có nhóm và giữa người trong cùng nhóm. 1 sân thì nhóm chỉ được ưu tiên, không ai chờ.
+Nhóm đi chung (mục 6.7 của `docs/raw_requirement.md`) lưu trong bảng `session_groups` và đi theo nhịp: nhóm 2 người một trận đứng chung đội, một trận tách; nhóm 4 người một trận cả nhóm chung sân, rồi tách thành cặp đấu người ngoài (đổi cặp) cho đến khi ai cũng đã đánh; nhóm 3 người mỗi trận một cặp đứng chung. Nhịp đổi khi xác nhận trận, trong cùng transaction. Chỉ nhóm 2 và 4 người ở nhịp "chung", khi mở từ 2 sân, mới vào sân cùng nhau và chờ nhau: người có bạn cùng nhóm đang `PLAYING` không được đề xuất; đề xuất có người trong nhóm phải có đủ nhóm, trừ khi còn sân trống khác thì được tách một đôi. Khi đó mục tiêu ≤ 1 trận chỉ bắt buộc với người không có nhóm và giữa người trong cùng nhóm. 1 sân thì nhóm chỉ được ưu tiên, không ai chờ.
 
 ### 4.5 Trùng lặp đồng đội và đối thủ
 
