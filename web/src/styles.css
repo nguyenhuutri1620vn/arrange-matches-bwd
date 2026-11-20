@@ -10,8 +10,12 @@
   --line: #dde5de;
   --neg: #c2362b;
   --pos: #14774f;
-  --radius: 14px;
+  --radius: 16px;
   --tap: 48px;
+  --shadow-sm: 0 1px 2px rgba(15, 91, 69, 0.08), 0 1px 1px rgba(19, 36, 30, 0.04);
+  --shadow-md: 0 6px 18px -8px rgba(15, 91, 69, 0.28), 0 2px 4px rgba(19, 36, 30, 0.05);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --t-press: 120ms;
   font-family: 'Be Vietnam Pro', system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-size: 16px;
   line-height: 1.45;
@@ -74,6 +78,20 @@ button {
   -webkit-tap-highlight-color: transparent;
 }
 
+button:not(:disabled):active {
+  filter: brightness(0.94);
+  transform: scale(0.98);
+}
+
+button {
+  transition:
+    transform var(--t-press) var(--ease-out),
+    filter var(--t-press) var(--ease-out),
+    background-color 180ms,
+    color 180ms,
+    box-shadow 180ms;
+}
+
 button:disabled {
   opacity: 0.55;
   cursor: default;
@@ -128,6 +146,7 @@ button:disabled {
     linear-gradient(rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.16)) 0 calc(100% - 10px) / 100% 2px no-repeat,
     linear-gradient(rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.16)) calc(100% - 34px) 0 / 2px 100% no-repeat,
     linear-gradient(rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.16)) calc(100% - 10px) 0 / 2px 100% no-repeat,
+    radial-gradient(120% 140% at 0% 0%, #1a7a5c 0%, transparent 60%),
     var(--court);
 }
 
@@ -158,6 +177,61 @@ button:disabled {
   font-size: 0.875rem;
 }
 
+/* Session stats: overlaps the banner edge like a scoreboard */
+
+.stats {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  margin: -10px 16px 0;
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+
+.stats li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  padding: 8px 2px;
+  min-width: 0;
+}
+
+.stats li + li {
+  border-left: 1px solid var(--line);
+}
+
+.stats b {
+  font-size: 1.25rem;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+.stats span {
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.stat-empty b {
+  color: var(--pos);
+}
+
+.stat-play b {
+  color: #b35f05;
+}
+
+.stat-rest b {
+  color: var(--rest);
+}
+
+.stats + .error {
+  margin-top: 12px;
+}
+
 /* Buttons */
 
 .btn {
@@ -171,9 +245,10 @@ button:disabled {
 }
 
 .btn-primary {
-  background: var(--court);
+  background: linear-gradient(180deg, #146b52, var(--court));
   border-color: var(--court);
   color: #fff;
+  box-shadow: var(--shadow-md);
 }
 
 .btn-play {
@@ -363,6 +438,7 @@ form .error {
   border-radius: var(--radius);
   background: var(--card);
   border: 1px solid var(--line);
+  box-shadow: var(--shadow-sm);
 }
 
 .court-head {
@@ -372,10 +448,21 @@ form .error {
   gap: 8px;
 }
 
+.elapsed {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
 .state {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  padding: 4px 10px 4px 8px;
+  border-radius: 999px;
+  background: #e3f1ea;
   font-size: 0.8125rem;
   font-weight: 600;
 }
@@ -393,15 +480,26 @@ form .error {
 }
 
 .state-play {
-  color: #a85a08;
+  color: #8a4500;
+  background: #fff0de;
 }
 
 .state-play::before {
   background: var(--play);
+  box-shadow: 0 0 0 0 rgba(240, 138, 36, 0.6);
+  animation: live 2s ease-out infinite;
+}
+
+@keyframes live {
+  70%,
+  100% {
+    box-shadow: 0 0 0 6px rgba(240, 138, 36, 0);
+  }
 }
 
 .state-draft {
   color: var(--ink-soft);
+  background: #eef2ee;
 }
 
 .state-draft::before {
@@ -444,6 +542,107 @@ form .error {
   background: repeating-linear-gradient(0deg, #fff 0 4px, rgba(255, 255, 255, 0.25) 4px 8px);
 }
 
+.court-idle {
+  position: absolute;
+  inset: auto 0 50%;
+  transform: translateY(50%);
+  margin: 0 auto;
+  width: max-content;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--court);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+/*
+ * Rally: four nested layers so each motion stays a pure transform.
+ * x travels across the net (alternate), y lifts an arc per crossing,
+ * flip turns the cork to lead on the way back, tilt follows the arc.
+ */
+.rally {
+  --rally: 1.5s;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  display: grid;
+  place-items: center;
+}
+
+.rally > div,
+.rally-y,
+.rally-flip,
+.rally-tilt {
+  animation-delay: var(--rally-delay, 0s);
+}
+
+.rally-x {
+  width: 100%;
+  display: grid;
+  place-items: center;
+  animation: rally-x var(--rally) linear infinite alternate;
+}
+
+.rally-y {
+  animation: rally-y var(--rally) infinite;
+}
+
+.rally-flip {
+  animation: rally-flip calc(var(--rally) * 2) step-end infinite;
+}
+
+.rally-tilt {
+  animation: rally-tilt var(--rally) ease-in-out infinite;
+}
+
+.rally svg {
+  display: block;
+  filter: drop-shadow(0 3px 2px rgba(19, 36, 30, 0.35));
+}
+
+@keyframes rally-x {
+  from {
+    transform: translateX(-30%);
+  }
+  to {
+    transform: translateX(30%);
+  }
+}
+
+@keyframes rally-y {
+  0% {
+    transform: translateY(6px);
+    animation-timing-function: cubic-bezier(0.2, 0.6, 0.4, 1);
+  }
+  45% {
+    transform: translateY(-34px);
+    animation-timing-function: cubic-bezier(0.6, 0, 0.8, 0.4);
+  }
+  100% {
+    transform: translateY(6px);
+  }
+}
+
+@keyframes rally-flip {
+  0% {
+    transform: scaleX(1);
+  }
+  50% {
+    transform: scaleX(-1);
+  }
+}
+
+@keyframes rally-tilt {
+  from {
+    transform: rotate(-28deg);
+  }
+  to {
+    transform: rotate(32deg);
+  }
+}
+
 .court-half {
   display: flex;
   flex-direction: column;
@@ -465,7 +664,7 @@ form .error {
   background: #fff;
   color: var(--ink);
   text-align: left;
-  box-shadow: 0 1px 0 rgba(19, 36, 30, 0.25);
+  box-shadow: 0 2px 6px -2px rgba(19, 36, 30, 0.35);
 }
 
 .chip-swap {
@@ -515,6 +714,7 @@ form .error {
   border-radius: var(--radius);
   background: var(--card);
   border: 1px solid var(--line);
+  box-shadow: var(--shadow-sm);
   overflow: hidden;
 }
 
@@ -927,7 +1127,9 @@ form .error {
   display: flex;
   justify-content: center;
   padding-bottom: env(safe-area-inset-bottom);
-  background: var(--card);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: saturate(1.4) blur(12px);
+  -webkit-backdrop-filter: saturate(1.4) blur(12px);
   border-top: 1px solid var(--line);
 }
 
@@ -948,9 +1150,21 @@ form .error {
   color: var(--ink-soft);
 }
 
+.tabs button svg {
+  width: 52px;
+  height: 28px;
+  padding: 3px 0;
+  border-radius: 999px;
+  transition: background-color 200ms var(--ease-out);
+}
+
 .tabs button.on {
   color: var(--court);
   font-weight: 700;
+}
+
+.tabs button.on svg {
+  background: #e3f1ea;
 }
 
 /* Login */
@@ -1000,8 +1214,22 @@ form .error {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sheet {
+  .sheet,
+  .state-play::before,
+  .rally-x,
+  .rally-y,
+  .rally-flip,
+  .rally-tilt {
     animation: none;
+  }
+
+  button,
+  .tabs button svg {
+    transition: none;
+  }
+
+  button:not(:disabled):active {
+    transform: none;
   }
 
   .tree-head::before {

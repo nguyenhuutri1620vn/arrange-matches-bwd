@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { api, type Court, type Gender, type GroupChoice, type GroupPhase, type Level, type Player, type SessionGroup, type SessionPlayer, type SessionState } from '../api'
 import { dateVN, LEVELS, money, parseMoney, timeVN } from '../format'
-import { ErrorBanner, Field, GenderMark, LevelTag, MoneyInput, Segmented, Sheet, Shuttle, useAction } from '../ui'
+import { ErrorBanner, Field, GenderMark, LevelTag, MoneyInput, Rally, Segmented, Sheet, Shuttle, useAction, useNow } from '../ui'
 
 const POLL_MS = 3000
 const MAX_GROUP_SIZE = 5
@@ -55,6 +55,7 @@ export function SessionPage() {
   return (
     <>
       <SessionBanner state={state} busy={busy} act={act} />
+      <SessionStats state={state} />
       <ErrorBanner message={error} onClose={() => setError(null)} />
       <div className="pad">
         <Segmented
@@ -150,6 +151,28 @@ function NewSession({ busy, onCreate }: { busy: boolean; onCreate: (b: { court_c
   )
 }
 
+// SessionStats is the at-a-glance strip under the banner: what the host
+// scans for between rallies.
+function SessionStats({ state }: { state: SessionState }) {
+  const count = (pred: (p: SessionPlayer) => boolean) => state.players.filter(pred).length
+  const stats: [string, number, string][] = [
+    ['Sân trống', state.courts.filter((c) => !c.match).length, 'stat-empty'],
+    ['Đang đánh', count((p) => p.status === 'PLAYING'), 'stat-play'],
+    ['Chờ', count((p) => p.status === 'WAITING'), 'stat-wait'],
+    ['Nghỉ', count((p) => p.status === 'RESTING'), 'stat-rest'],
+  ]
+  return (
+    <ul className="stats" aria-label="Tóm tắt buổi chơi">
+      {stats.map(([label, n, cls]) => (
+        <li key={label} className={cls}>
+          <b>{n}</b>
+          <span>{label}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 function SessionBanner({ state, busy, act }: ViewProps) {
   const [ending, setEnding] = useState(false)
   const { session, players, fees } = state
@@ -159,9 +182,9 @@ function SessionBanner({ state, busy, act }: ViewProps) {
     <header className="banner">
       <Shuttle size={44} />
       <div className="banner-main">
-        <h1>Buổi {dateVN(session.date)}</h1>
+        <h1>Buổi {dateVN(session.date).slice(0, 5)}</h1>
         <p>
-          {players.length} người, bắt đầu {timeVN(session.start_time)}
+          {players.length} người · từ {timeVN(session.start_time)}
         </p>
       </div>
       <button className="btn-on-dark" onClick={() => setEnding(true)}>
@@ -444,7 +467,10 @@ function CourtCard({
   const match = court.match
   const draft = match?.status === 'DRAFT'
   const playing = court.status === 'IN_USE'
-  const label = playing ? `Đang đánh từ ${timeVN(match?.started_at ?? null)}` : draft ? 'Đề xuất chờ duyệt' : 'Trống'
+  const now = useNow()
+  const started = match?.started_at ? Date.parse(match.started_at) : NaN
+  const minutes = Number.isNaN(started) ? null : Math.max(0, Math.floor((now - started) / 60000))
+  const label = playing ? 'Đang đánh' : draft ? 'Đề xuất chờ duyệt' : 'Trống'
 
   const team = (ids: number[]) =>
     ids.map((id) => {
@@ -475,13 +501,22 @@ function CourtCard({
   return (
     <section className="court-card">
       <div className="court-head">
-        <h2>Sân {court.index}</h2>
+        <h2>
+          Sân {court.index}
+          {playing && minutes !== null && (
+            <small className="elapsed">
+              {minutes} phút · từ {timeVN(match?.started_at ?? null)}
+            </small>
+          )}
+        </h2>
         <span className={playing ? 'state state-play' : draft ? 'state state-draft' : 'state state-empty'}>{label}</span>
       </div>
-      <div className={playing ? 'court court-play' : draft ? 'court court-draft' : 'court'}>
+      <div className={playing ? 'court court-play' : draft ? 'court court-draft' : 'court court-empty'}>
         <div className="court-half">{match && team(match.team_a)}</div>
         <div className="court-net" aria-hidden="true" />
         <div className="court-half">{match && team(match.team_b)}</div>
+        {playing && <Rally seed={court.index} />}
+        {!match && <p className="court-idle">Sân trống, sẵn sàng</p>}
       </div>
 
       {draft && match && (

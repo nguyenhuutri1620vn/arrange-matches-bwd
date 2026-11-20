@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { ApiError, type Gender, type Level } from './api'
 import { genderLabel, parseMoney } from './format'
 
@@ -68,6 +68,44 @@ export function Shuttle({ size = 28 }: { size?: number }) {
       </g>
     </svg>
   )
+}
+
+/**
+ * A shuttle flying back and forth over the net while a match is on. Purely
+ * decorative: hidden from screen readers and frozen at the net under
+ * reduced motion. `seed` offsets the timing so courts don't rally in sync.
+ */
+export function Rally({ seed = 0 }: { seed?: number }) {
+  return (
+    <div className="rally" aria-hidden="true" style={{ '--rally-delay': `${-seed * 0.37}s` } as CSSProperties}>
+      <div className="rally-x">
+        <div className="rally-y">
+          <div className="rally-flip">
+            <div className="rally-tilt">
+              <svg width="30" height="30" viewBox="0 0 64 64">
+                {/* cork on the right: the direction of travel */}
+                <g transform="rotate(90 32 32)">
+                  <path d="M32 16 18 54h28z" fill="#fff" />
+                  <path d="M32 16 25 54M32 16v38M32 16l7 38M21 46h22" stroke="#0f5b45" strokeWidth="2" fill="none" />
+                  <circle cx="32" cy="14" r="8" fill="#fff" stroke="#0f5b45" strokeWidth="2" />
+                </g>
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** Current time, refreshed every `everyMs`. */
+export function useNow(everyMs = 15000) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), everyMs)
+    return () => clearInterval(t)
+  }, [everyMs])
+  return now
 }
 
 export function LevelTag({ level }: { level: Level }) {
