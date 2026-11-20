@@ -118,7 +118,7 @@ Giai đoạn sau MVP có thể mở cho nhiều host khác dùng.
 - Sau khi kết thúc, nếu sân trống và đủ người, app đề xuất trận tiếp theo cho sân đó.
 - Bấm nhầm "Kết thúc trận": app chờ 5 giây trước khi gửi lên server và hiện nút "Hoàn tác". Hoàn tác trong 5 giây thì không có gì thay đổi; hết 5 giây (hoặc host rời trang) thì trận kết thúc như trên. Đây không phải huỷ trận: server chỉ nhận lệnh kết thúc một lần, sau khi hết thời gian hoàn tác.
 - Không có huỷ trận `ONGOING`. `DRAFT` bị bỏ thì xóa luôn, không lưu lịch sử.
-- Không có đồng hồ đếm giờ hay cảnh báo quá giờ. 15 phút/trận chỉ dùng cho mô phỏng.
+- Sân đang đánh hiển thị số phút đã đánh và giờ bắt đầu (ví dụ "12 phút · từ 20:04"), chỉ để host theo dõi. Không có giới hạn giờ, không cảnh báo quá giờ. 15 phút/trận chỉ dùng cho mô phỏng.
 
 ### 5.6 Buổi chơi (Session)
 
@@ -328,6 +328,7 @@ Mô phỏng: Fable viết chương trình mô phỏng với danh sách người 
 - Giá thuê sân (`court_fee`): host tự nhập sau trong phần cấu hình; mặc định 0. Đây là khoản chi.
 - 2026-11-11: Host sửa phí tháng của Trang thành 667.000 (trước là 666.000). Thêm hai khoản chi "Chi phí ban đầu của sân" cho Trí và Trang (mục 12).
 - 2026-11-11: Thêm chi phí ban đầu tiền sân 1.400.000 và tiền cầu 630.000 (mục 12).
+- 2026-11-20: Sân đang đánh hiện số phút đã đánh và giờ bắt đầu (5.5). Vẫn không có giới hạn giờ hay cảnh báo quá giờ. Host duyệt.
 - 2026-11-20: Thêm hoàn tác 5 giây cho "Kết thúc trận" (5.5) và rung nhẹ khi bấm thao tác chính (7). Hoàn tác làm ở giao diện bằng cách trì hoãn lệnh, không thêm API hay trạng thái mới. Host yêu cầu.
 - 2026-11-17: Nhóm tối đa 5 người, nhóm 5 đi nhịp như nhóm 4 (4 người chung sân, người thứ năm luân phiên ra ngoài). Một buổi có nhiều nhóm. Host chọn. Mô phỏng 1-3 nhóm 5 người đạt: từ 2 sân 70-83% trận của người trong nhóm đúng nhịp, buổi lệch 2 trận nhiều nhất 1,5%.
 - 2026-11-17: Nhóm theo nhịp chung/tách thay cho tỉ lệ 67% (6.7, 6.8): nhóm 2 người một trận chung một trận tách; nhóm 4 người cả nhóm một trận rồi tách cặp đổi đồng đội; nhóm 3 người mỗi trận một cặp. Nhóm lưu trong bảng `session_groups`, chọn được ngay lúc thêm người (5.1). Chỉ nhóm đang ở nhịp "chung" mới chờ nhau. Ưu tiên nhóm đưa lên trên người khó xếp. Host duyệt.
