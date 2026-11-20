@@ -699,6 +699,91 @@ form .error {
   width: 156px;
 }
 
+/* Undo: the finish waits a few seconds before reaching the server */
+
+.court-card:has(.btn-undo) .court {
+  filter: saturate(0.4);
+  transition: filter 200ms;
+}
+
+.btn-undo {
+  border-color: var(--play);
+  color: #8a4500;
+  background: #fff0de;
+}
+
+.toasts {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(72px + env(safe-area-inset-bottom));
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 0 12px;
+  pointer-events: none;
+}
+
+.toast {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 52px;
+  padding: 4px 4px 4px 16px;
+  border-radius: 14px;
+  background: var(--ink);
+  color: #fff;
+  font-weight: 500;
+  box-shadow: 0 10px 24px -8px rgba(19, 36, 30, 0.55);
+  overflow: hidden;
+  pointer-events: auto;
+  animation: toast-in 220ms var(--ease-out);
+}
+
+.toast span:first-child {
+  flex: 1;
+}
+
+.toast-undo {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: #ffc27a;
+  font-weight: 700;
+}
+
+.countdown {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: var(--play);
+  transform-origin: left;
+  animation-name: countdown;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+@keyframes countdown {
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes toast-in {
+  from {
+    transform: translateY(12px);
+    opacity: 0;
+  }
+}
+
 /* Lists */
 
 .section-head {
@@ -1214,6 +1299,7 @@ form .error {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .toast,
   .sheet,
   .state-play::before,
   .rally-x,

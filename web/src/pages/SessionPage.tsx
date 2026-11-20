@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { api, type Court, type Gender, type GroupChoice, type GroupPhase, type Level, type Player, type SessionGroup, type SessionPlayer, type SessionState } from '../api'
 import { dateVN, LEVELS, money, parseMoney, timeVN } from '../format'
-import { ErrorBanner, Field, GenderMark, LevelTag, MoneyInput, Rally, Segmented, Sheet, Shuttle, useAction, useNow } from '../ui'
+import { buzz, ErrorBanner, Field, GenderMark, LevelTag, MoneyInput, Rally, Segmented, Sheet, Shuttle, useAction, useNow } from '../ui'
 
 const POLL_MS = 3000
 const MAX_GROUP_SIZE = 5
+// How long "Kết thúc trận" waits before reaching the server, so a mistaken
+// tap can be undone without the server ever seeing it.
+const UNDO_MS = 5000
 
 export function SessionPage() {
   // undefined: first load; null: no open session.
@@ -42,6 +45,8 @@ export function SessionPage() {
     [run],
   )
 
+  const finishes = usePendingFinishes(act, state)
+
   if (state === undefined) return <div className="splash">Đang tải buổi chơi…</div>
   if (state === null) {
     return (
@@ -67,17 +72,130 @@ export function SessionPage() {
           ]}
         />
       </div>
-      {view === 'courts' ? <CourtsView state={state} busy={busy} act={act} /> : <FeesView state={state} busy={busy} act={act} />}
+      {view === 'courts' ? (
+        <CourtsView state={state} busy={busy} act={act} finishes={finishes} />
+      ) : (
+        <FeesView state={state} busy={busy} act={act} />
+      )}
+      <UndoToasts finishes={finishes} />
     </>
   )
 }
 
 type Act = (fn: () => Promise<SessionState>) => Promise<SessionState | undefined>
+
+interface PendingFinish {
+  matchId: number
+  court: number
+  until: number
+}
+
+interface Finishes {
+  pending: PendingFinish[]
+  start: (matchId: number, court: number) => void
+  undo: (matchId: number) => void
+}
+
+// usePendingFinishes holds "Kết thúc trận" taps for UNDO_MS before sending
+// them. Leaving the page or this tab sends them at once, so a finished match
+// is never lost; a match that stopped being ONGOING meanwhile (session
+// ended, finished on another phone) is dropped.
+function usePendingFinishes(act: Act, state: SessionState | null | undefined): Finishes {
+  const [pending, setPending] = useState<PendingFinish[]>([])
+  const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>())
+  const actRef = useRef(act)
+  useEffect(() => {
+    actRef.current = act
+  }, [act])
+
+  const forget = useCallback((matchId: number) => {
+    clearTimeout(timers.current.get(matchId))
+    timers.current.delete(matchId)
+    setPending((list) => list.filter((f) => f.matchId !== matchId))
+  }, [])
+
+  const start = useCallback(
+    (matchId: number, court: number) => {
+      if (timers.current.has(matchId)) return
+      buzz(20)
+      timers.current.set(
+        matchId,
+        setTimeout(() => {
+          forget(matchId)
+          actRef.current(() => api.finish(matchId))
+        }, UNDO_MS),
+      )
+      setPending((list) => [...list, { matchId, court, until: Date.now() + UNDO_MS }])
+    },
+    [forget],
+  )
+
+  const undo = useCallback(
+    (matchId: number) => {
+      forget(matchId)
+      buzz([10, 40, 10])
+    },
+    [forget],
+  )
+
+  useEffect(() => {
+    const flush = () => {
+      for (const [matchId, timer] of timers.current) {
+        clearTimeout(timer)
+        api.finishOnLeave(matchId)
+      }
+      timers.current.clear()
+      setPending([])
+    }
+    const onVisibility = () => document.visibilityState === 'hidden' && flush()
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('pagehide', flush)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('pagehide', flush)
+      flush()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (state === undefined) return
+    const ongoing = new Set((state?.courts ?? []).flatMap((c) => (c.match?.status === 'ONGOING' ? [c.match.id] : [])))
+    for (const matchId of timers.current.keys()) if (!ongoing.has(matchId)) forget(matchId)
+  }, [state, forget])
+
+  return { pending, start, undo }
+}
+
+function UndoToasts({ finishes }: { finishes: Finishes }) {
+  if (finishes.pending.length === 0) return null
+  return (
+    <div className="toasts" role="status">
+      {finishes.pending.map((f) => (
+        <div key={f.matchId} className="toast">
+          <span>Kết thúc trận sân {f.court}</span>
+          <button className="toast-undo" onClick={() => finishes.undo(f.matchId)}>
+            Hoàn tác
+          </button>
+          <Countdown until={f.until} />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// Countdown draws the undo window as a shrinking bar, resumed at the right
+// point if it remounts.
+function Countdown({ until }: { until: number }) {
+  const [delay] = useState(() => Math.min(0, until - Date.now() - UNDO_MS))
+  return <span className="countdown" aria-hidden="true" style={{ animationDuration: `${UNDO_MS}ms`, animationDelay: `${delay}ms` }} />
+}
 interface ViewProps {
   state: SessionState
   busy: boolean
   act: Act
 }
+
+type CourtsViewProps = ViewProps & { finishes: Finishes }
 
 function NewSession({ busy, onCreate }: { busy: boolean; onCreate: (b: { court_count: number; fee_male: number; fee_female: number; court_fee: number }) => void }) {
   const [courts, setCourts] = useState(1)
@@ -224,7 +342,7 @@ function SessionBanner({ state, busy, act }: ViewProps) {
   )
 }
 
-function CourtsView({ state, busy, act }: ViewProps) {
+function CourtsView({ state, busy, act, finishes }: CourtsViewProps) {
   const [adding, setAdding] = useState(false)
   const [selected, setSelected] = useState<number | null>(null)
   const [swap, setSwap] = useState<{ matchId: number; outId: number } | null>(null)
@@ -252,7 +370,16 @@ function CourtsView({ state, busy, act }: ViewProps) {
       </div>
 
       {courts.map((court) => (
-        <CourtCard key={court.id} court={court} byId={byId} groups={groups} busy={busy} act={act} onSwap={(matchId, outId) => setSwap({ matchId, outId })} />
+        <CourtCard
+          key={court.id}
+          court={court}
+          byId={byId}
+          groups={groups}
+          busy={busy}
+          act={act}
+          finishes={finishes}
+          onSwap={(matchId, outId) => setSwap({ matchId, outId })}
+        />
       ))}
 
       <section>
@@ -455,6 +582,7 @@ function CourtCard({
   groups,
   busy,
   act,
+  finishes,
   onSwap,
 }: {
   court: Court
@@ -462,6 +590,7 @@ function CourtCard({
   groups: Map<number, SessionGroup>
   busy: boolean
   act: Act
+  finishes: Finishes
   onSwap: (matchId: number, outId: number) => void
 }) {
   const match = court.match
@@ -470,7 +599,8 @@ function CourtCard({
   const now = useNow()
   const started = match?.started_at ? Date.parse(match.started_at) : NaN
   const minutes = Number.isNaN(started) ? null : Math.max(0, Math.floor((now - started) / 60000))
-  const label = playing ? 'Đang đánh' : draft ? 'Đề xuất chờ duyệt' : 'Trống'
+  const ending = playing && match !== null && finishes.pending.some((f) => f.matchId === match.id)
+  const label = ending ? 'Đang kết thúc…' : playing ? 'Đang đánh' : draft ? 'Đề xuất chờ duyệt' : 'Trống'
 
   const team = (ids: number[]) =>
     ids.map((id) => {
@@ -515,7 +645,7 @@ function CourtCard({
         <div className="court-half">{match && team(match.team_a)}</div>
         <div className="court-net" aria-hidden="true" />
         <div className="court-half">{match && team(match.team_b)}</div>
-        {playing && <Rally seed={court.index} />}
+        {playing && !ending && <Rally seed={court.index} />}
         {!match && <p className="court-idle">Sân trống, sẵn sàng</p>}
       </div>
 
@@ -527,15 +657,27 @@ function CourtCard({
             <button className="btn" disabled={busy} onClick={() => act(() => api.dismiss(match.id))}>
               Bỏ đề xuất
             </button>
-            <button className="btn btn-primary" disabled={busy} onClick={() => act(() => api.confirm(match.id, !match.balanced))}>
+            <button
+              className="btn btn-primary"
+              disabled={busy}
+              onClick={() => {
+                buzz()
+                act(() => api.confirm(match.id, !match.balanced))
+              }}
+            >
               {match.balanced ? 'Xác nhận' : 'Vẫn xác nhận'}
             </button>
           </div>
         </>
       )}
-      {playing && match && (
-        <button className="btn btn-play" disabled={busy} onClick={() => act(() => api.finish(match.id))}>
+      {playing && match && !ending && (
+        <button className="btn btn-play" disabled={busy} onClick={() => finishes.start(match.id, court.index)}>
           Kết thúc trận
+        </button>
+      )}
+      {ending && match && (
+        <button className="btn btn-undo" onClick={() => finishes.undo(match.id)}>
+          Hoàn tác kết thúc trận
         </button>
       )}
       {!match && (

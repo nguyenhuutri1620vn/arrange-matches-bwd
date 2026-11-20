@@ -98,6 +98,18 @@ export function Rally({ seed = 0 }: { seed?: number }) {
   )
 }
 
+/**
+ * Short haptic tick for key actions. Android only: iOS Safari has no
+ * Vibration API, so this is a no-op there.
+ */
+export function buzz(pattern: number | number[] = 15) {
+  try {
+    navigator.vibrate?.(pattern)
+  } catch {
+    // Some browsers throw when vibration is blocked; feedback is optional.
+  }
+}
+
 /** Current time, refreshed every `everyMs`. */
 export function useNow(everyMs = 15000) {
   const [now, setNow] = useState(() => Date.now())

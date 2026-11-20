@@ -245,6 +245,16 @@ export const api = {
   confirm: (matchId: number, force: boolean) => post<SessionState>(`/api/matches/${matchId}/confirm`, { force }),
   dismiss: (matchId: number) => del<SessionState>(`/api/matches/${matchId}`),
   finish: (matchId: number) => post<SessionState>(`/api/matches/${matchId}/finish`),
+  /** Fire-and-forget finish that survives the page closing (undo window cut short). */
+  finishOnLeave: (matchId: number) => {
+    fetch(`/api/matches/${matchId}/finish`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+      credentials: 'same-origin',
+      keepalive: true,
+    }).catch(() => {})
+  },
 
   transactions: (month: string) => get<Transaction[]>(`/api/transactions?month=${month}`),
   createTransaction: (t: Partial<Transaction>) => post<Transaction>('/api/transactions', t),
